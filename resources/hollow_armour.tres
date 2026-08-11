@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EnemyDef" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/battle/EnemyDef.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/enemies/hollow_armour.png" id="2"]
+
+[resource]
+script = ExtResource("1")
+display_name = "속 빈 갑옷"
+texture = ExtResource("2")
+max_hp = 30
+damage_min = 5
+damage_max = 8
+heavy_damage = 15
+heavy_chance = 0.3
+telegraph_line = "갑옷이 검을 천천히 치켜든다."
+talk_lines = Array[String](["\"거기 누구요.\" 대답이 없다.", "투구 틈에서 무언가가 스르르 움직였다.", "\"나는 지나갈 뿐이다.\""])
+talk_needs_light = true
+talk_success_line = "갑옷이 내 쪽으로 고개를 돌렸다. 한참 뒤, 검을 내리고 옆으로 비켜섰다."
+talk_fail_line = "갑옷이 고개를 돌렸다. 어둠뿐이라 아무것도 보이지 않는 듯하다."

@@ -1,0 +1,7 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# 확인용으로 찍은 화면들(FilterPreview의 S키, DialogueTest의 --capture)
+tools/_*.png
+tools/_*.png.import
