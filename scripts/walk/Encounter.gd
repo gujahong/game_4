@@ -88,6 +88,8 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if _depth >= 1.0:
 		return
+	# 떠 있는 것들은 걸음과 무관하게 흔들리므로 멈춰 있어도 다시 그려야 한다.
+	_lines.queue_redraw()
 	var walking := Input.is_action_pressed("ui_up")
 	if walking:
 		_depth = minf(_depth + WALK_SPEED * delta, 1.0)
@@ -317,6 +319,14 @@ class _Lines extends Node2D:
 			var bulk: float = fposmod(sin(float(i) * 4.71) * 43758.5453, 1.0)
 			var size: float = lerpf(12.0, 46.0, bulk)
 			# 저마다 다른 박자로 오르내린다. 같은 박자면 통째로 흔들려서 벽처럼 보인다.
-			height += sin(owner_scene._flow * lerpf(0.9, 2.3, bulk) + float(i) * 1.7) * 26.0
-			var lit: float = minf(1.0 / d, 1.0) * 0.5
+			#
+			# **시간에 물린다. `_flow`에 물리면 걸을 때만 흔들린다** - 걸음은 거리이지
+			# 시간이 아니라서, 서 있으면 통째로 멎어버렸다.
+			var now: float = float(Time.get_ticks_msec()) * 0.001
+			height += sin(now * lerpf(0.9, 2.3, bulk) + float(i) * 1.7) * 26.0
+			# **스쳐 지나갈 때 흐려지며 사라진다.** 딱 잘라내면 눈앞에서 툭 꺼진다 -
+			# 깊이가 되감기는 자리라서 어차피 한 번은 없어져야 하고, 그 순간을 감추는 것이다.
+			var lit: float = minf(1.0 / d, 1.0) * 0.5 * smoothstep(0.5, 1.3, d)
+			if lit <= 0.01:
+				continue
 			_cube(vanish, deep, x, height, d, size, Color(1, 1, 1, lit))
