@@ -28,7 +28,11 @@ const PHOTO_DIR := "res://assets/photos"
 const BATTLE_SCENE := "res://scenes/Battle.tscn"
 ## 처음에 띄울 사진. 비워두면 폴더의 첫 장부터. Space로 넘기며 볼 수 있지만, 지금 보고 싶은
 ## 그림이 정해져 있을 때 여섯 번 누르지 않으려고 둔다.
-const START_PHOTO := "gate_3.png"
+## 조우가 벌어지는 곳의 그림. **첫 조우는 아카식 서고 안**이다(2026-08-13).
+##
+## 전에는 `gate_3.png`를 가리키고 있었는데 **그 파일이 저장소에 없어서 열면 그대로 깨졌다.**
+## 다른 컴퓨터에서 만들고 안 올린 것으로 보인다.
+const START_PHOTO := "archive.png"
 
 const CENTRE := Vector2(480, 270)
 
@@ -66,7 +70,9 @@ const TARGET_HEIGHT_DEFAULT := 0.44
 const NUDGE := 0.01
 ## 안개에 묻혀 조금 눌러둔다. 배경과 명암을 맞춰야 오려붙인 티가 안 난다.
 const TARGET_DIM := 0.74
-const TARGET_PATH := "res://assets/enemies/hollow_armour.png"
+## 조우 상대. 아카식 서고를 지키는 **눈으로 뒤덮인 고리**다(2026-08-13).
+## 배경은 `tools/_cutbg.gd`로 도려냈고 원본은 `watcher_raw.png`에 남아 있다.
+const TARGET_PATH := "res://assets/enemies/watcher.png"
 
 ## --- 움직임 ---
 

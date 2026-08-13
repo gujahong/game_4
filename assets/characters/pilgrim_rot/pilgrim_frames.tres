@@ -1,0 +1,125 @@
+[gd_resource type="SpriteFrames" format=3]
+
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/east/0.png" id="1_32d80"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/north/0.png" id="2_2o381"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/south/0.png" id="3_obby8"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/west/0.png" id="4_677cx"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/east/1.png" id="5_3pwlw"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/east/2.png" id="6_68oc8"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/east/3.png" id="7_xysw6"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/east/4.png" id="8_mst18"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/north/1.png" id="9_h6cbl"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/north/2.png" id="10_ximvr"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/north/3.png" id="11_5yw06"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/north/4.png" id="12_fjsjq"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/south/1.png" id="13_84rk4"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/south/2.png" id="14_quvhc"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/south/3.png" id="15_rmcbr"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/south/4.png" id="16_f1xkm"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/west/1.png" id="17_vw6b3"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/west/2.png" id="18_tafau"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/west/3.png" id="19_ork5f"]
+[ext_resource type="Texture2D" path="res://assets/characters/pilgrim_rot/walk/west/4.png" id="20_57phi"]
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("1_32d80")
+}],
+"loop": 0,
+"name": &"idle_east",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("2_2o381")
+}],
+"loop": 0,
+"name": &"idle_north",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("3_obby8")
+}],
+"loop": 0,
+"name": &"idle_south",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("4_677cx")
+}],
+"loop": 0,
+"name": &"idle_west",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("5_3pwlw")
+}, {
+"duration": 1.0,
+"texture": ExtResource("6_68oc8")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_xysw6")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_mst18")
+}],
+"loop": 1,
+"name": &"walk_east",
+"speed": 8.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("9_h6cbl")
+}, {
+"duration": 1.0,
+"texture": ExtResource("10_ximvr")
+}, {
+"duration": 1.0,
+"texture": ExtResource("11_5yw06")
+}, {
+"duration": 1.0,
+"texture": ExtResource("12_fjsjq")
+}],
+"loop": 1,
+"name": &"walk_north",
+"speed": 8.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("13_84rk4")
+}, {
+"duration": 1.0,
+"texture": ExtResource("14_quvhc")
+}, {
+"duration": 1.0,
+"texture": ExtResource("15_rmcbr")
+}, {
+"duration": 1.0,
+"texture": ExtResource("16_f1xkm")
+}],
+"loop": 1,
+"name": &"walk_south",
+"speed": 8.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("17_vw6b3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("18_tafau")
+}, {
+"duration": 1.0,
+"texture": ExtResource("19_ork5f")
+}, {
+"duration": 1.0,
+"texture": ExtResource("20_57phi")
+}],
+"loop": 1,
+"name": &"walk_west",
+"speed": 8.0
+}]

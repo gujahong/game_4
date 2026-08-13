@@ -1,9 +1,11 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/map/Walker.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/map/TilesetRoom.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/LampGlow.gd" id="3"]
 [ext_resource type="Shader" path="res://shaders/DitherScreen.gdshader" id="4"]
+[ext_resource type="Script" path="res://scripts/map/HeroSprite.gd" id="5"]
+[ext_resource type="SpriteFrames" path="res://assets/characters/pilgrim_rot/pilgrim_frames.tres" id="6"]
 
 [sub_resource type="ShaderMaterial" id="ScreenFilter"]
 shader = ExtResource("4")
@@ -18,6 +20,11 @@ script = ExtResource("1")
 
 [node name="Room" type="TileMapLayer" parent="World"]
 script = ExtResource("2")
+
+[node name="Hero" type="AnimatedSprite2D" parent="World"]
+script = ExtResource("5")
+sprite_frames = ExtResource("6")
+animation = &"idle_south"
 
 [node name="Camera" type="Camera2D" parent="World"]
 zoom = Vector2(2, 2)
@@ -38,4 +45,4 @@ layer = 60
 
 [node name="Lamp" type="Sprite2D" parent="LampLayer"]
 script = ExtResource("3")
-glow_size = 224
+glow_size = 128

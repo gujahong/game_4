@@ -1,35 +1,43 @@
 extends Node
 class_name Walker
 
-## 방 안을 돌아다니는 주인공. **아직 그림이 없어서 등불 빛이 곧 주인공**이다.
-##
-## 임시가 아니라 이 게임에 맞는 표현이기도 하다 - 화면에서 색을 가진 것은 등불뿐이고,
-## 그 등불을 든 것이 나다. 캐릭터 스프라이트가 생기면 이 빛 아래에 세우면 된다.
+## 방 하나를 걸어다니는 화면. **엮기만 한다** — 규칙은 `Hero`, 그림은 `HeroSprite`가 맡는다.
 ##
 ## 카메라가 나를 따라오므로 **나는 항상 화면 한가운데**에 있다. 그래서 등불(CanvasLayer)과
 ## 화면 필터의 빛도 가운데에 고정해두면 되고, 세상 쪽만 움직인다.
 ##
 ## 등불은 필터 판보다 **위** 레이어에 있어서 회색으로 안 변한다(`Room.tscn` 참고).
 
-const SPEED := 90.0
 const EDGE_PADDING := 10.0  ## 벽에 코를 박지 않게 바닥 안쪽으로 남기는 여유
+
+## 조우가 벌어지는 자리(바닥 사각형에 대한 비율)와 닿았다고 볼 거리(픽셀).
+##
+## 자리를 표시해두지 않는다. **어쩌다 마주치는 편이 사건이 된다** - 조우 연출을 보스에만
+## 쓰기로 한 것과 같은 이유다(2026-08-11).
+## [2026-08-13] `Walk.tscn`(일러스트 한 장을 채우는 방식)에서 `Encounter.tscn`(검은 화면에
+## 흰 선만)으로 바꿨다. 옛것은 그대로 남아 있으니 여기 한 줄만 되돌리면 된다.
+const ENCOUNTER_SCENE := "res://scenes/Encounter.tscn"
+const ENCOUNTER_AT := Vector2(0.82, 0.5)
+const ENCOUNTER_RANGE := 20.0
 
 @onready var _room: TilesetRoom = $World/Room
 @onready var _camera: Camera2D = $World/Camera
+@onready var _hero_sprite: HeroSprite = $World/Hero
 @onready var _lamp: LampGlow = $LampLayer/Lamp
 @onready var _screen: ColorRect = $FilterLayer/Screen
 
-var _bounds: Rect2
-var _at: Vector2  ## 세상 좌표에서 내가 서 있는 자리
+var _hero: Hero
+var _encounter: Vector2
+var _left := false   ## 이미 넘어갔는가. 한 프레임에 두 번 부르지 않으려는 것
 
 
 func _ready() -> void:
-	_bounds = _room.floor_rect_px().grow(-EDGE_PADDING)
-	_at = _bounds.get_center()
-	_camera.position = _at
+	var floor_rect := _room.floor_rect_px().grow(-EDGE_PADDING)
+	_hero = Hero.new(floor_rect)
+	_encounter = floor_rect.position + floor_rect.size * ENCOUNTER_AT
+	_place()
 
-	# 나는 늘 화면 한가운데에 있으므로 등불과 빛도 가운데 고정이다.
-	_lamp.position = get_viewport().get_visible_rect().size * 0.5
+	# 나는 늘 화면 한가운데에 있으므로 화면 필터의 빛은 가운데 고정이면 된다.
 	_screen.material.set_shader_parameter("light_position", Vector2(0.5, 0.5))
 
 	if "--capture" in OS.get_cmdline_user_args():
@@ -37,19 +45,33 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	var move := Vector2(
+	_hero.step(Vector2(
 		Input.get_axis("ui_left", "ui_right"),
 		Input.get_axis("ui_up", "ui_down")
-	)
-	if move == Vector2.ZERO:
-		return
-	var next: Vector2 = _at + move.normalized() * SPEED * delta
-	# 바닥 밖으로는 못 나간다. 벽 충돌을 따로 만들 것 없이 바닥 사각형에 가둔다.
-	_at = Vector2(
-		clampf(next.x, _bounds.position.x, _bounds.end.x),
-		clampf(next.y, _bounds.position.y, _bounds.end.y)
-	)
-	_camera.position = _at
+	), delta)
+	_place()
+
+	# 조우 자리에 닿으면 연출로 넘어간다.
+	if not _left and _hero.at.distance_to(_encounter) < ENCOUNTER_RANGE:
+		_left = true
+		get_tree().change_scene_to_file(ENCOUNTER_SCENE)
+
+
+## **정수 픽셀로 끊어** 놓는다. 카메라가 소수점 자리에 있으면 2배로 확대된 화면에서 바닥
+## 도트가 반 칸씩 어긋나 무늬가 지글거린다.
+func _place() -> void:
+	var here := _hero.at.round()
+	_camera.position = here
+	_hero_sprite.position = here
+	_hero_sprite.show_state(_hero.facing, _hero.walking)
+
+	# 빛을 등불에 맞춘다. 자리는 `HeroSprite`가 정하고 여기서는 읽어만 간다 - 표를 두 군데
+	# 들고 있으면 반드시 어긋난다.
+	#
+	# 등불 빛은 화면 레이어에 있어서 세상과 같이 확대되지 않으므로 카메라 배율만큼 곱한다.
+	# **빛을 몸 한가운데에 두면 안 된다** - 더하기 합성이라 겹치면 캐릭터가 통째로 씻긴다.
+	_lamp.position = (get_viewport().get_visible_rect().size * 0.5
+		+ _hero_sprite.lantern_at() * _camera.zoom).round()
 
 
 ## 확인용. 화면 필터가 화면 텍스처를 다시 읽으므로 프레임을 넉넉히 기다린 뒤에 찍는다
