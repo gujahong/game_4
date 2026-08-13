@@ -71,6 +71,15 @@ const WALK_SPEED := 0.045
 const TARGET_FAR := 0.45
 const TARGET_NEAR := 0.95
 
+## 그것의 숨과 회전. **살아 있는지 아닌지 알 수 없을 만큼 느리게.**
+## 한 바퀴 도는 데 100초쯤 걸린다.
+const BREATH := 10.0
+const BREATH_SPEED := 0.35
+const SPIN_SPEED := 0.062
+
+## 오로라를 일렁이게 하는 셰이더. 관문 너머를 흔들 때 쓰던 것을 그대로 쓴다.
+const WAVE_SHADER := "res://shaders/PortalWave.gdshader"
+
 var _lines: Node2D
 var _target: Sprite2D
 var _figure: HeroSprite
@@ -104,7 +113,11 @@ func _place(walking: bool = false) -> void:
 	if _target.texture != null:
 		var scale_now: float = SCREEN.y * grow / float(_target.texture.get_size().y)
 		_target.scale = Vector2(scale_now, scale_now)
-	_target.position = VANISH
+	# 그것은 아주 느리게 오르내리고 빙빙 돈다. **살아 있는지 아닌지 알 수 없을 만큼** 느려야
+	# 한다 - 빠르면 기계가 되고, 멎어 있으면 그림이 된다.
+	var now: float = float(Time.get_ticks_msec()) * 0.001
+	_target.position = VANISH + Vector2(0.0, sin(now * BREATH_SPEED) * BREATH)
+	_target.rotation = now * SPIN_SPEED
 	_figure.show_state("north", walking)
 	_lamp.position = _figure.position + _figure.lantern_at() * float(FIGURE_ZOOM)
 	_lines.queue_redraw()
@@ -117,6 +130,15 @@ func _build() -> void:
 	# 그것은 선보다 위에 그린다. 선이 위를 지나가면 그것이 뒤에 있는 것처럼 보인다.
 	_target = Sprite2D.new()
 	_target.texture = load(TARGET)
+	# 오로라가 일렁인다. 폭을 작게 잡아야 고리와 눈은 멎어 있고 바깥의 옅은 테만 흔들린다 -
+	# 크게 주면 그것 전체가 물결쳐서 물속에 잠긴 것처럼 보인다.
+	var wave := ShaderMaterial.new()
+	wave.shader = load(WAVE_SHADER)
+	wave.set_shader_parameter("amplitude", 2.0)
+	wave.set_shader_parameter("wavelength", 190.0)
+	wave.set_shader_parameter("speed", 0.35)
+	wave.set_shader_parameter("skew", 0.5)
+	_target.material = wave
 	_target.z_index = 1
 	add_child(_target)
 
