@@ -42,6 +42,11 @@ const FLOAT_SPEED := 1.6
 ## 등불이 머리에 겹쳐서, 그쪽에서 어깨 너머로 밀어 놓는다.
 var aside := Vector2.ZERO
 
+## 몸이 도는데도 **등불은 제자리에 두고 싶을 때** 쓴다(비었으면 몸이 보는 쪽을 따른다).
+## 조우 화면에서 뒷걸음질할 때 쓴다 - 염력으로 띄워 둔 것이라 몸이 돌아섰다고 등불까지
+## 반대편으로 튀면 손에 들린 것처럼 보인다.
+var lantern_facing := ""
+
 var _lantern: Sprite2D
 
 
@@ -52,7 +57,7 @@ func _ready() -> void:
 
 
 func show_state(facing: String, walking: bool) -> void:
-	_float_lantern(facing)
+	_float_lantern(lantern_facing if lantern_facing != "" else facing)
 
 	if sprite_frames == null:
 		return
@@ -66,6 +71,8 @@ func show_state(facing: String, walking: bool) -> void:
 ## 등불을 바라보는 쪽 앞에 띄운다. 흔들림은 **정수 픽셀로 끊는다** - 부드럽게 움직이면
 ## 도트가 반 칸씩 어긋나 혼자 매끈해 보인다.
 func _float_lantern(facing: String) -> void:
+	if _lantern == null:
+		return
 	var at: Vector2 = LANTERN_AT.get(facing, Vector2.ZERO)
 	var drift: float = float(Time.get_ticks_msec()) * 0.001 * FLOAT_SPEED
 	at.y += roundf(sin(drift) * FLOAT_HEIGHT)
@@ -76,4 +83,21 @@ func _float_lantern(facing: String) -> void:
 
 ## 등불이 지금 떠 있는 자리. 빛(`LampGlow`)을 여기에 맞추려고 밖에서 읽어 간다.
 func lantern_at() -> Vector2:
-	return _lantern.position
+	return _lantern.position if _lantern != null else Vector2.ZERO
+
+
+## 등불 그림이 **화면에서 실제로 있는 자리.** 밖에서 배율과 부모 자리를 곱해 다시 맞추면
+## 그 계산이 어긋나는 순간 빛만 딴 데서 난다 - 그림이 있는 자리를 그대로 물어보는 쪽이 안전하다.
+func lantern_global() -> Vector2:
+	return _lantern.global_position if _lantern != null else global_position
+
+
+## **등불을 몸에서 떼어 내준다.** 떼어 낸 쪽이 자기 자식으로 받아 가고, 그 뒤로 이 몸은
+## 등불을 안 그린다 - 전투에서 사람은 화면 밖으로 흘러가고 등불만 남기 때문이다.
+## 염력으로 띄워 둔 것이라 몸에서 떨어져 나가도 이상하지 않다.
+func release_lantern() -> Sprite2D:
+	var given := _lantern
+	if given != null:
+		remove_child(given)
+		_lantern = null
+	return given

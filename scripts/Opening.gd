@@ -17,6 +17,9 @@ class_name Opening
 const PICTURE := "res://assets/photos/gate_4_wide.png"
 const BEYOND := "res://assets/photos/archive.png"
 const FIGURE := "res://assets/photos/pilgrim.png"
+const TRACK := "res://assets/music/title.mp3"
+## 곡의 이 지점부터 쓴다(회원님). 앞의 도입부는 안 쓰고, 한 바퀴 돌아도 여기로 돌아온다.
+const TRACK_FROM := 26.0
 const WAVE_SHADER := "res://shaders/PortalWave.gdshader"
 const LEAK_SHADER := "res://shaders/PortalLeak.gdshader"
 
@@ -142,6 +145,7 @@ var _depth := 0.0       ## 0이면 맨 앞, 1이면 갈 수 있는 가장 안쪽
 func _ready() -> void:
 	_build()
 	_apply(0.0)
+	Music.play_in(self, TRACK, Music.VOLUME_DB, TRACK_FROM)
 
 	if "--capture" in OS.get_cmdline_user_args():
 		_capture_and_quit()

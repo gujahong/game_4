@@ -13,6 +13,11 @@ class_name EnemyDef
 @export var damage_min: int = 5
 @export var damage_max: int = 8
 
+## **덤비지 않고 보기만 하는 것.** 참이면 제 차례에 아무 짓도 안 하고 `watch_lines`를 한 줄
+## 흘린다 - 때리지 않는데도 물러설 수 없는 상대가 있어야 한다. 지키는 자가 그렇다.
+@export var watches: bool = false
+@export var watch_lines: Array[String] = []
+
 ## 예고된 뒤 다음 턴에 날아오는 큰 공격. 방어로만 흘릴 수 있다.
 @export var heavy_damage: int = 15
 @export var heavy_chance: float = 0.3  ## 매 턴 큰 공격을 준비할 확률
@@ -20,11 +25,6 @@ class_name EnemyDef
 ## 큰 공격을 준비할 때 뜨는 문장. **등불이 환할 때만 보인다** - 어두우면 뭐가 오는지 모른다.
 @export_multiline var telegraph_line: String = ""
 
-## 말을 걸 때마다 순서대로 하나씩. 다 떨어지면 통하거나 안 통한다.
-@export var talk_lines: Array[String] = []
-
-## 마지막 말이 통하려면 등불이 환해야 하는가. 참이면 "설득하려면 기름을 태워야 한다"가 된다 -
-## 말로 푸는 길에도 값을 매기는 장치다.
-@export var talk_needs_light: bool = true
-@export_multiline var talk_success_line: String = ""
-@export_multiline var talk_fail_line: String = ""
+## **말을 거는 방법들.** 무엇이 뜰지도, 그것이 무슨 일을 하는지도 적마다 다르다
+## (`TalkOption`). 여기가 비면 대화가 아예 안 뜬다 - 말이 안 통하는 것도 있어야 한다.
+@export var talk_options: Array[TalkOption] = []

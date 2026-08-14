@@ -1,19 +1,46 @@
-[gd_resource type="Resource" script_class="EnemyDef" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="EnemyDef" load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/battle/EnemyDef.gd" id="1"]
 [ext_resource type="Texture2D" path="res://assets/enemies/watcher.png" id="2"]
+[ext_resource type="Script" path="res://scripts/battle/TalkOption.gd" id="3"]
+
+[sub_resource type="Resource" id="Talk_look"]
+script = ExtResource("3")
+label = "살펴보기"
+lines = Array[String](["고리가 세 겹이다. 안쪽 것만 반대로 돌고 있다.", "눈이 몇인지 세다가 그만두었다. 셀 때마다 수가 달랐다."])
+needs_light = true
+dark_line = "어둠 속에서는 윤곽조차 잡히지 않는다."
+effect = 4
+effect_line = "이것은 덤비려는 자세가 아니다. 문 앞에 선 자세다."
+
+[sub_resource type="Resource" id="Talk_ask"]
+script = ExtResource("3")
+label = "묻기"
+lines = Array[String](["\"나는 결사의 수호자다.\" 눈꺼풀 하나 깜빡이지 않는다.", "고리에 적힌 글자가 읽는 사이에 다른 글자로 바뀐다.", "\"여기 적힌 것 중에 내 이름도 있나.\""])
+needs_light = true
+dark_line = "눈들이 그대로다. 어둠 속에서는 무엇을 물어도 읽히지 않는다."
+effect = 1
+effect_line = "고리가 천천히 멎는다. 눈들이 하나씩 감기고, 길이 열린다."
+
+[sub_resource type="Resource" id="Talk_threat"]
+script = ExtResource("3")
+label = "위협"
+lines = Array[String](["칼끝을 고리 쪽으로 들어 올렸다.", "물러서라고 말했다. 목소리가 서고에 울리다 만다."])
+needs_light = false
+dark_line = ""
+effect = 0
+effect_line = "그 것은 그저 본다. 위협이 닿을 자리가 없다."
 
 [resource]
 script = ExtResource("1")
-display_name = "지켜보는 것"
+display_name = "그 것"
 texture = ExtResource("2")
 max_hp = 44
-damage_min = 6
-damage_max = 9
-heavy_damage = 18
-heavy_chance = 0.25
-telegraph_line = "고리가 한 칸 돌아간다. 눈들이 일제히 이쪽을 향한다."
-talk_lines = Array[String](["\"나는 결사의 수호자다.\" 눈꺼풀 하나 깜빡이지 않는다.", "고리에 적힌 글자가 읽는 사이에 다른 글자로 바뀐다.", "\"여기 적힌 것 중에 내 이름도 있나.\""])
-talk_needs_light = true
-talk_success_line = "고리가 천천히 멎는다. 눈들이 하나씩 감기고, 길이 열린다."
-talk_fail_line = "눈들이 그대로다. 어둠 속에서는 무엇을 물어도 읽히지 않는다."
+watches = true
+watch_lines = Array[String](["그 것은 이쪽을 보고 있다.", "눈꺼풀 하나 깜빡이지 않는다.", "[돈다]고리가 한 칸 돌아간다. 그뿐이다.", "아무 일도 일어나지 않는다. 그것이 견디기 어렵다.", "빛이 닿는 데까지 눈이 따라온다."])
+damage_min = 0
+damage_max = 0
+heavy_damage = 0
+heavy_chance = 0.0
+telegraph_line = ""
+talk_options = Array[Resource]([SubResource("Talk_look"), SubResource("Talk_ask"), SubResource("Talk_threat")])

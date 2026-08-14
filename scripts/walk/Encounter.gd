@@ -15,7 +15,9 @@ class_name Encounter
 ## 그리고 회원님이 주신 참고 그림이 예외 없이 1점 투시였다. 그걸 그림에 맡기지 않고 직접
 ## 그리는 것이니 원래 의도에 오히려 가깝다.
 
-const BATTLE_SCENE := "res://scenes/Battle.tscn"
+## 전투는 **씬을 갈아타지 않고** 이 화면 위에 얹는다(`BattleStage`). 복도도 등불도 그것도
+## 사라지지 않아야 카메라만 돌린 것으로 읽힌다.
+const ENEMY_DEF := "res://resources/watcher.tres"
 const TARGET := "res://assets/enemies/watcher.png"
 ## 탑다운 맵에서 쓰는 그 주인공을 그대로 쓴다. **북쪽(뒷모습) 걷기**가 이 화면에 맞는다 -
 ## 등을 보이고 안으로 걸어 들어가는 그림이라서다. 떠 있는 등불도 `HeroSprite`가 같이 그린다.
@@ -28,6 +30,9 @@ const LAMP_ASIDE := Vector2(52.0, 22.0)
 const SCREEN := Vector2(960, 540)
 ## 소실점 = 지평선. 위쪽 3분의 1쯤에 둔다 - **바닥이 넓게 보여야 서 있는 자리가 잡힌다.**
 const VANISH := Vector2(480, 190)
+## 지금의 소실점. **전투로 넘어가면 그것을 따라 옮겨 간다** - 원근이 그것에게 모여야 구도가
+## 하나로 읽힌다. 걷는 동안에는 `VANISH` 그대로다.
+var vanish := VANISH
 
 ## 바닥으로 뻗는 세로선의 수와, 다가오는 가로선의 수.
 ##
@@ -81,7 +86,23 @@ const TARGET_NEAR := 2.1
 ## 한 바퀴 도는 데 100초쯤 걸린다.
 const BREATH := 26.0
 const BREATH_SPEED := 0.42
-const SPIN_SPEED := 0.062
+const SPIN_SPEED := 0.09
+## 붙잡히는 순간 **도는 것이 멎고**(이만큼), **정면으로 홱 돌아선다**(이만큼 걸려서).
+## 둘을 더해도 `HALT_FOR`보다 한참 짧아야 한다 - 돌아선 채로 가만히 있는 사이가 남아야
+## 소름이 돋는다.
+## 발견하고 멎어 있는 사이. 짧다 - 그 뒤에 돈다.
+const SPIN_FREEZE := 1.0
+## 다 돌고 나서 **한참 쳐다보다가** 운다. 돌자마자 울면 도는 동작에 딸린 소리로 들린다.
+const CRY_WAIT := 1.3
+const SPIN_SNAP := 2.6
+## 돌아설 때 **몇 번에 끊어 도는가.** 매끄럽게 돌면 문짝이 열리는 것이고, 칸칸이 끊어야
+## "드드드드"가 된다 - 산 것이 아니라 뭔가에 붙들려 돌아가는 것으로 보인다.
+## **잘게 썰어야 한다.** 9칸으로는 한 칸이 커서 쿵쿵거리는 것이 됐고, 20칸도 한 번에 도는
+## 각이 커서 가벼웠다. 칸이 많고 느릴수록 무겁게 끌려 돌아가는 것으로 보인다.
+const SPIN_STEPS := 44
+## 돌아서는 동안의 잔떨림(픽셀). **1~2px짜리 좀스러운 떨림**이라야 "드드드"로 들린다.
+## 4px는 화면이 통째로 들려서 "쿠구구구궁"이 됐다 - 그건 다가올 때 쓸 것이다.
+const SPIN_QUAKE := 1.4
 
 ## 가장자리의 기운을 바깥으로 퍼지게 하는 셰이더.
 const AURA_SHADER := "res://shaders/AuraRipple.gdshader"
@@ -95,6 +116,7 @@ var _lamp: LampGlow
 var _shade: ColorRect
 var _flash: ColorRect
 var _burst: _Burst
+var _stage: BattleStage  ## 전투가 시작되면 여기 얹힌다. null이면 아직 걷는 중이다
 
 ## 어둠이 먹어드는 구간(깊이). **시간이 아니라 거리에 물린다** - 멈추면 어두워지는 것도
 ## 멎어야 한다(회원님). 컷신이 아니라 내가 다가가서 벌어지는 일이다.
@@ -102,12 +124,22 @@ var _burst: _Burst
 ## 들어와도 "이미 본 것"이 다시 밝아질 뿐이다. 절반쯤 왔을 때 이미 안 보여야 마지막 순간이
 ## 놀랍다.
 const DARK_FROM := 0.22
-const DARK_TO := 0.62
+## 0.62에서 다 가렸더니 붙잡히자마자 캄캄해져서, 그것이 다가오는 것을 볼 새가 없었다.
+## 0.88까지 늦춰서 **훨씬 가까이 온 뒤에** 암전된다.
+const DARK_TO := 0.88
 
 ## 이만큼 걸으면 **그것이 직접 다가오기 시작한다.** 그 뒤로는 멈춰도 거리가 줄어든다 -
 ## 걸음이 갑자기 빨라지는 것이 "저것이 오고 있다"로 읽혀서, 아예 그렇게 만든 것이다.
 const SEIZE_AT := 8.0
-const SEIZE_PACE := 2.6
+## 붙잡힌 뒤의 배속. **길게 쫓아와야** 도망칠 수 없다는 것이 드러난다.
+const SEIZE_PACE := 1.15
+## 코앞까지 왔을 때의 배속. `SEIZE_PACE`에서 여기까지 매끄럽게 올라간다.
+const SEIZE_RUSH := 2.4
+## 붙잡히는 순간 **걸음이 멎고 잠깐 아무 일도 안 일어난다.** 그 정적이 있어야 다음에
+## 다가오는 것이 사건이 된다 - 곧바로 쫓아오면 그냥 빨라진 것으로 보인다.
+const HALT_FOR := 8.4
+## 다가올수록 화면이 떨린다. 가장 가까울 때의 흔들림(픽셀).
+const SHAKE_MAX := 9.0
 const DARK_LAMP := 0.22   ## 다 먹혔을 때 등불이 눌린 크기
 
 ## 뚫린 구멍이 다 열렸을 때의 반경. 화면 구석까지 덮으려면 1보다 커야 한다.
@@ -138,14 +170,30 @@ const SETTLE := 0.55    ## 빛살이 걷히고 화면이 원래대로 돌아오�
 const LINGER := 0.9     ## 돌아온 화면을 그대로 두는 시간. 그 뒤에 전투로 넘어간다
 ## **번쩌어어어억.** 주황빛이 차오르고, 다 덮인 채로 한참 버틴다. 여기가 길어야 소리를
 ## 길게 늘여 부른 그 느낌이 난다 - 짧으면 그냥 전환 효과다.
-## 빛살이 두두두 터져 나오는 시간. `_Burst.GAPS`의 합과 같아야 마지막 조각이 제때 나온다.
-const BURST_FOR := 3.5
+## 빛살이 두두두 터져 나오는 시간. **`_Burst`가 스스로 정한다** - 손으로 맞춰 두면 `GAPS`를
+## 고칠 때마다 어긋나고, 어긋나면 조각이 덜 나온 채 화면이 켜진다.
+var _burst_for := _Burst.duration()
+## 다 채운 흰 화면을 그대로 두는 시간. **여기가 있어야 "다 찼다"가 보인다.**
+const BURST_HOLD := 0.45
 const FLOOD_FOR := 1.6
 ## 다 덮인 채로 두는 시간. **짧아야 한다** - 빛이 화면을 채우면 그 안에서 이미 바뀌어 있어야
 ## 한다. 길게 끌면 "빛이 찼다가 → 가라앉고 → 바뀐다"가 되어 전환이 눈에 보인다.
 const HOLD := 0.18
 
+## 발소리 사이(초). 걷는 박자와 어긋나 보이면 여기를 고친다.
+const STEP_EVERY := 0.46
+
 var _walked := 0.0    ## 실제로 걸은 시간(초). 멈춰 있으면 안 는다
+var _held := 0.0      ## 붙잡힌 뒤 흐른 시간. 앞의 `HALT_FOR`는 정적이다
+var _spin_from := 0.0 ## 도는 것이 멎은 자리(라디안). 여기서 정면으로 돌아선다
+var _spun := false    ## 멎은 자리를 이미 잡아 뒀는가
+var _spin_clicks := -1  ## 돌아서면서 딸깍인 횟수. 칸이 넘어갈 때만 소리를 낸다
+var _step_beat := 0.0   ## 마지막 발소리로부터 흐른 시간
+var _left_foot := false ## 어느 발 차례인가. 좌우로 크기가 조금 다르다
+var _blinked := 0       ## 부싯돌이 튄 횟수
+var _shards := 0        ## 터져 나온 빛살 수
+var _cried := false     ## 돌아선 뒤의 울음이 이미 울었는가
+var _hum: AudioStreamPlayer   ## 그것이 오는 동안 깔리는 공포
 var _seized := false  ## 붙잡혔는가. 그 뒤로는 내가 멈춰도 그것이 다가온다
 var _depth := 0.0   ## 0이면 맨 끝, 1이면 닿음
 var _flow := 0.0    ## 사각 테가 흘러나온 양. 걸을 때만 늘어난다
@@ -155,16 +203,32 @@ var _arrived := -1.0  ## 닿은 뒤 흐른 시간. 음수면 아직 걷는 중�
 func _ready() -> void:
 	_build()
 	_place()
+	# 서고에 흐르는 바람. **처음부터 끝까지 안 멎는다** - 전투에 들어가도 여기는 같은 자리다.
+	Sfx.loop(self, Sfx.WIND, -31.0)
+
+	# **전투 구도만 볼 때 쓰는 지름길.** `-- --battle`로 켜면 8초를 걷고 붙잡히는 7초를
+	# 기다리고 암전·빛살까지 25초를 보지 않고 곧장 전투로 간다. `Battle.tscn`은 옛날 배경에
+	# CRT가 걸린 시험대라 이 화면과 딴판이므로, 구도를 볼 때는 여기로 봐야 한다.
+	if "--battle" in OS.get_cmdline_user_args():
+		_depth = 1.0
+		_begin_battle()
 
 
 func _process(delta: float) -> void:
+	# 전투가 시작되면 이 화면은 손을 뗀다. 복도도 그것도 그대로 서 있고, 움직이는 것은
+	# `BattleStage`가 맡는다.
+	if _stage != null:
+		# 선은 계속 다시 그린다. 떠 있는 정육면체와 매달린 등이 제 박자로 흔들려야 전투
+		# 내내 공간이 살아 있다 - 안 그리면 배경이 사진처럼 굳는다.
+		_lines.queue_redraw()
+		return
+
 	if _arrived >= 0.0:
 		_arrived += delta
 		_close_in()
-		# 다 덮인 뒤 잠깐 그대로 둔다. **화면이 주황으로 균일할 때 넘겨야 이음매가 안 보인다** -
-		# 덮이자마자 바꾸면 툭 끊긴 것으로 읽힌다.
-		if _arrived >= OPEN_AT + BURST_FOR + SETTLE + LINGER:
-			get_tree().change_scene_to_file(BATTLE_SCENE)
+		# 빛살이 걷히고 세상이 돌아온 뒤 잠깐 두었다가 전투로 넘어간다.
+		if _arrived >= OPEN_AT + _burst_for + BURST_HOLD + SETTLE + LINGER:
+			_begin_battle()
 		return
 
 	# 떠 있는 것들은 걸음과 무관하게 흔들리므로 멈춰 있어도 다시 그려야 한다.
@@ -176,21 +240,127 @@ func _process(delta: float) -> void:
 	if not _seized:
 		if walking:
 			_walked += delta
+			# 발이 땅에 닿을 때마다 한 번. **소리 높이를 조금씩 흔든다** - 똑같은 소리를
+			# 되풀이하면 걸음이 아니라 시계가 된다.
+			_step_beat += delta
+			if _step_beat >= STEP_EVERY:
+				_step_beat = 0.0
+				# **한 발씩 번갈아 밟는다.** 같은 크기로 되풀이하면 사람이 아니라 기계다.
+				# 한쪽이 조금 여려야 걸음에 좌우가 생긴다.
+				_left_foot = not _left_foot
+				Sfx.play(self, Sfx.STEP,
+					-13.0 if _left_foot else -16.0,
+					randf_range(0.95, 1.05) * (1.0 if _left_foot else 1.06))
 		if _walked >= SEIZE_AT:
 			_seized = true
+			# **붙잡히는 소리는 뺐다**(회원님). 울음과 같은 순간에 울려서 울음을 덮었다.
+			# 소리는 순서대로 하나씩 온다 - 발견하고(멎음), 돌고(그그그긍), 울고, 그리고
+			# 다가오기 시작할 때 공포가 깔린다.
+			pass
 
-	if walking or _seized:
-		# **어두워졌다고 빨라지지 않는다.** 전에는 캄캄한 구간을 빨리 지나가려고 걸음을
-		# 올렸는데, 붙잡히기도 전에 갑자기 빨라져서 두 번 빨라지는 꼴이었다. 빨라지는 것은
-		# 그것이 오는 것 하나뿐이라야 그 순간이 산다.
+	# 붙잡히면 **걸음이 멎고 정적이 흐른다.** 그 사이에는 아무것도 안 움직인다.
+	if _seized:
+		_held += delta
+	var halted: bool = _seized and _held < HALT_FOR
+
+	# **소리가 순서대로 하나씩 온다.** 다 겹쳐 놓으면 무슨 일이 벌어지는지가 안 들린다.
+	# 돌아서기를 마치는 순간 운다.
+	if _seized and not _cried and _held >= SPIN_FREEZE + SPIN_SNAP + CRY_WAIT:
+		_cried = true
+		Sfx.play(self, Sfx.CRY, 0.0)
+	# 정적이 끝나고 **오기 시작할 때** 공포가 깔린다. 크기는 남은 거리가 정한다.
+	if _seized and not halted and _hum == null:
+		_hum = Sfx.loop(self, Sfx.DRONE, -26.0)
+
+	# **거리와 복도는 다른 것이다.** 거리는 나와 그것 사이가 좁혀지는 양이고, 복도가 흐르는
+	# 것은 내가 지나가는 양이다. 걸을 때는 둘이 같이 가지만, 붙잡힌 뒤에는 **그것만 온다.**
+	# 전에는 하나로 묶여 있어서, 서 있는데도 책장이 계속 지나갔다 - 내가 걸어가는 그림이라
+	# 다가오는 것이 안 보였다.
+	if (walking or _seized) and not halted:
+		# **어두워졌다고 빨라지지 않는다.** 빨라지는 것은 그것이 오는 것 하나뿐이라야 산다.
 		var pace: float = WALK_SPEED
 		if _seized:
-			pace = WALK_SPEED * SEIZE_PACE
+			# **가까울수록 빨리 온다.** 고른 속도로 오면 굴러오는 물건 같다. 끝에 가서
+			# 달려들어야 쫓기는 것이 된다. 계단이 없는 한 줄짜리 곡선이라 중간에
+			# "갑자기 빨라지는" 데가 없다.
+			pace = WALK_SPEED * lerpf(SEIZE_PACE, SEIZE_RUSH, _depth)
 		_depth = minf(_depth + pace * delta, 1.0)
-		_flow += pace * delta * float(RUNGS)
-	_place(walking)
+
+	# 붙잡힌 뒤에는 ↓로 물러설 수 있다. **멀어지지는 않는다** - 발버둥이 아무 소용 없다는
+	# 것이 그 자체로 이 장면의 말이다.
+	var backing: bool = _seized and not halted and Input.is_action_pressed("ui_down")
+
+	# 복도는 **내 발이 움직이는 만큼** 흐른다. 앞으로 밀면 지나가고 물러서면 되밀린다.
+	# 발을 떼면 멎는다 - 그것이 오는 것은 거리(`_depth`)이지 복도가 아니다.
+	if not halted:
+		if walking:
+			_flow += WALK_SPEED * delta * float(RUNGS)
+		elif backing:
+			_flow -= WALK_SPEED * delta * float(RUNGS)
+
+	# 저역은 **가까울수록 커진다.** 화면 떨림과 같은 값을 쓴다 - 귀와 눈이 같은 것을 말해야
+	# 하나의 사건으로 읽힌다. 조용한 데서 시작해 코앞에서 제 소리가 된다.
+	if _hum != null:
+		_hum.volume_db = lerpf(-24.0, -3.0, _depth)
+
+	# 다가올수록 화면이 떨린다. **CanvasLayer 위의 것들은 안 흔들린다** - 어둠과 등불이
+	# 같이 떨면 화면 전체가 흔들리는 것이라 멀미가 나고, 세상만 떨어야 그것이 다가와서
+	# 울리는 것으로 읽힌다.
+	var quake: float = 0.0
+	if _seized and not halted:
+		quake = SHAKE_MAX * _depth
+	elif _turning():
+		quake = SPIN_QUAKE
+	position = Vector2(randf_range(-quake, quake), randf_range(-quake, quake)).round()
+
+	# **정적일 때는 캐릭터도 멎는다.** 걸음이 멎었는데 다리만 움직이면 제자리걸음이 된다.
+	_place(false if halted else (walking or backing), backing)
+
+
 	if _depth >= 1.0:
 		_arrived = 0.0
+		# **팟 - 등불이 꺼진다.** 화면이 캄캄해지는 그 순간에 소리가 같이 끊겨야 꺼진 것이
+		# 된다. 그 뒤로 우웅…… 우웅…… 하고 붙으려다 말고, 마지막에 팟팟팟 터진다.
+		Sfx.play(self, Sfx.SHARD, -4.0, 0.82)
+		if _hum != null:
+			_hum.queue_free()
+			_hum = null
+		# 흔들림을 여기서 푼다. 안 그러면 마지막에 흔들린 만큼 화면이 비뚤어진 채로 굳어,
+		# 빛살이 걷히고 세상이 돌아왔을 때 몇 픽셀 어긋나 있다.
+		position = Vector2.ZERO
+		# **빛살이 걷히면 그것을 마주 보고 서 있다.** 물러서던 중이었으면 이쪽을 보고 있는데,
+		# 그 자세로 전투에 들어가면 등지고 싸우는 그림이 된다. 여기서 돌려세운다.
+		_place(false, false)
+
+
+## 씬을 갈아타는 대신 **이 화면 위에 전투를 얹는다.** 서 있던 그것과 나를 그대로 넘겨주면
+## 무대가 둘을 좌우로 옮겨 앉힌다 - 아무것도 사라지지 않으니 카메라만 돈 것이 된다.
+func _begin_battle() -> void:
+	# 카메라가 도는 소리. 저역이 쓸려 가며 부풀었다 잦아든다.
+	Sfx.play(self, Sfx.SWEEP, -8.0)
+	if _hum != null:
+		_hum.queue_free()   # 다가오는 것은 끝났다. 이제부터는 전투 곡이 깔린다
+		_hum = null
+	# **어둠은 안 걷는다.** 전투도 서고 한복판이고, 여기서 보이는 것은 등불이 밝히는 데까지다 -
+	# 불을 끄면 아무것도 안 보여야 한다. 반경은 무대가 등불 밝기에 맞춰 잡는다.
+	_hole(OPEN_WIDE, 0.0)
+	# **투시선을 도로 켠다.** 다가가는 동안 걷어 놨는데(`_place`), 그대로 두면 전투가 빈 검은
+	# 화면에서 벌어진다 - 여기가 서고라는 것도, 공간이 있다는 것도 이 선들이 말해 준다.
+	_lines.modulate.a = 1.0
+	# 등불을 몸에 도로 붙인다. 뒷걸음질 때만 제자리에 묶어 둔 것이라, 옆을 보고 서면 등불도
+	# 그쪽 앞에 떠야 한다.
+	_figure.lantern_facing = ""
+	_stage = BattleStage.new()
+	add_child(_stage)
+	# 여럿을 받을 수 있는 자리다. 서고에서 마주치는 것은 지금 하나뿐이다.
+	_stage.begin([load(ENEMY_DEF)], _target, _figure, _lamp, _lines, _shade)
+
+	# **소실점이 그것을 따라간다.** 둘이 걸어서 자리를 옮기는 게 아니라 카메라가 돌아서
+	# 구도가 바뀌는 것이므로, 복도의 원근도 같이 돌아야 한다 - 안 그러면 배경만 아까 그대로
+	# 서 있고 둘만 미끄러진다. 무대와 같은 시간·같은 곡선이라 한 몸으로 움직인다.
+	var turn := create_tween()
+	turn.set_trans(BattleStage.MOVE_CURVE).set_ease(Tween.EASE_IN_OUT)
+	turn.tween_property(self, "vanish", BattleStage.ENEMY_AT, BattleStage.MOVE_FOR)
 
 
 ## 등불 자리에 뚫린 구멍의 반경을 정한다. 0이면 완전한 암전이다.
@@ -205,6 +375,17 @@ func _hole(radius: float, dim: float = 0.0) -> void:
 ## 이 순간만 시간에 물린다. 어둠이 먹어드는 것은 걸어야 진행되지만(`_place`), 여기서부터는
 ## 이미 벌어진 일이라 내가 멈춘다고 멎지 않는다.
 func _close_in() -> void:
+	# **캄캄한 동안에도 등불은 떠 있다.** 도착하면 `_place`가 멎어서 빛이 그 자리에 굳는데,
+	# 그러면 깜빡이는 것이 등불이 아니라 화면에 박힌 점이 된다. 여기서 흔들림만 이어 준다 -
+	# 사람은 어둠에 묻혀 안 보이고 빛만 오르내린다.
+	_figure.show_state("north", false)
+	_lamp.position = _figure.lantern_global()
+
+	# 부와앙…… 깜빡임이 시작되는 시각마다 한 번씩. 불이 붙으려다 마는 소리다.
+	while _blinked < BLINKS.size() and _arrived >= BLINKS[_blinked][0]:
+		Sfx.play(self, Sfx.BLINK, -8.0, randf_range(0.94, 1.06))
+		_blinked += 1
+
 	# 조리개가 열리기 전까지는 **완전한 암전**이다. 등불까지 꺼서 볼 것이 하나도 없다.
 	if _arrived < OPEN_AT:
 		_hole(0.0)
@@ -215,15 +396,23 @@ func _close_in() -> void:
 	# 보인다.** 앞이 느리고 끝이 급한 곡선이라야 "확" 열린다.
 	# **화면을 하얗게 채우지 않는다**(회원님). 암전에서 빛살이 두두두 터져 나오고, 그 사이에
 	# 세상이 다시 드러난다. 밝아졌다 어두워지는 왕복이 없어서 눈이 안 피로하다.
-	var burst: float = clampf((_arrived - OPEN_AT) / BURST_FOR, 0.0, 1.0)
+	var burst: float = clampf((_arrived - OPEN_AT) / _burst_for, 0.0, 1.0)
 	_burst.centre = _lamp.position
 	_burst.spread = burst
+	# 조각이 하나 터질 때마다 소리도 하나. **화면이 세는 박자를 귀도 그대로 센다** - 두두두두가
+	# 눈에만 있고 귀에 없으면 반쪽이다.
+	var out: int = _Burst.popped(burst)
+	while _shards < out:
+		_shards += 1
+		Sfx.play(self, Sfx.SHARD, -9.0, randf_range(0.8, 1.24))
 	_burst.modulate.a = 1.0
 	_burst.queue_redraw()
 
 	# **빛살이 터지는 내내 암전이다.** 조리개를 같이 열면 세상이 비쳐서 빛살과 섞이고,
 	# 갈라진 모양이 안 보인다. 검은 화면에 빛살만 두두두 나온다.
-	if burst < 1.0:
+	# **다 채운 채로 잠깐 버틴다.** 마지막 조각이 자리에 앉는 순간 화면이 켜지면 덜 찬 것처럼
+	# 보인다 - 흰 화면이 한 박자 서 있어야 "다 찼다"가 눈에 들어온다.
+	if burst < 1.0 or _arrived < OPEN_AT + _burst_for + BURST_HOLD:
 		_hole(0.0)
 		_lamp.visible = false
 		return
@@ -232,7 +421,8 @@ func _close_in() -> void:
 	# 통째로 푼다. 그리고 잠시 그대로 두었다가 전투로 넘어간다.
 	# **어둡던 것을 여기서 통째로 푼다.** 조각이 걷히는 동안 화면이 원래대로 돌아오고,
 	# 그대로 잠시 두었다가 전투로 넘어간다.
-	var back: float = clampf((_arrived - OPEN_AT - BURST_FOR) / SETTLE, 0.0, 1.0)
+	var back: float = clampf(
+		(_arrived - OPEN_AT - _burst_for - BURST_HOLD) / SETTLE, 0.0, 1.0)
 	_burst.modulate.a = 1.0 - back
 	_hole(OPEN_WIDE, 0.0)
 	_lamp.visible = true
@@ -266,45 +456,84 @@ func _blink(t: float) -> void:
 	_flash.color.a = 0.0
 
 
-func _place(walking: bool = false) -> void:
+## 그것이 도는 각. 평소에는 그냥 천천히 돌지만, **붙잡히는 순간 멎었다가 정면으로 홱
+## 돌아선다.** 계속 돌면 그냥 떠 있는 물건인데, 멎고 바로 서면 이쪽을 알아본 것이 된다.
+func _spin(now: float) -> float:
+	if not _seized:
+		return now * SPIN_SPEED
+	if not _spun:
+		# 멎은 자리를 그대로 잡아 둔다. **가까운 쪽으로 돌려야** 한 바퀴 돌아가지 않는다.
+		_spin_from = wrapf(_target.rotation, -PI, PI)
+		_spun = true
+	if _held < SPIN_FREEZE:
+		return _spin_from
+	var turn: float = clampf((_held - SPIN_FREEZE) / SPIN_SNAP, 0.0, 1.0)
+	# **칸칸이 끊어 돈다.** 마지막 칸은 정확히 0이라 어긋난 채로 멎지 않는다.
+	var step: float = snappedf(turn, 1.0 / float(SPIN_STEPS))
+	# 칸이 넘어갈 때마다 마른 딸깍. 44칸이 이어지면 이것이 곧 그르르르다.
+	var clicked: int = int(round(step * float(SPIN_STEPS)))
+	if clicked != _spin_clicks:
+		_spin_clicks = clicked
+		# 44칸이 이어지므로 **한 칸은 여려야 한다** - 하나하나가 또렷하면 시끄럽다.
+		Sfx.play(self, Sfx.TICK, -26.0, randf_range(0.94, 1.07))
+	return lerpf(_spin_from, 0.0, step)
+
+
+## 지금 홱 돌아서는 중인가. 그동안만 화면이 자잘하게 운다.
+func _turning() -> bool:
+	return _seized and _held >= SPIN_FREEZE and _held < SPIN_FREEZE + SPIN_SNAP
+
+
+func _place(walking: bool = false, backing: bool = false) -> void:
 	# **캄캄해지면 몰래 끝 크기로 당겨 놓는다.** 아무도 못 보는 사이라 공짜이고, 불이
 	# 들어오는 순간 이미 이만큼 커져 있어야 "왜 이렇게 커"가 나온다.
-	var eaten_now: float = smoothstep(DARK_FROM, DARK_TO, _depth)
-	var grow: float = lerpf(TARGET_FAR, TARGET_NEAR,
-		maxf(pow(_depth, 2.4), eaten_now))
+	# **어두워지는 정도로 크기를 당기지 않는다.** 어둠 곡선이 훨씬 가팔라서 깊이 0.27쯤에서
+	# 그쪽이 앞지르고, 그 순간부터 그것만 갑자기 빨리 커진다 - 붙잡히기 직전에 뭔가 바뀐
+	# 것처럼 보였던 것이 이것이다. 크기는 깊이 하나만 따른다.
+	var grow: float = lerpf(TARGET_FAR, TARGET_NEAR, pow(_depth, 2.4))
 	if _target.texture != null:
 		var scale_now: float = SCREEN.y * grow / float(_target.texture.get_size().y)
 		_target.scale = Vector2(scale_now, scale_now)
 	# 그것은 아주 느리게 오르내리고 빙빙 돈다. **살아 있는지 아닌지 알 수 없을 만큼** 느려야
 	# 한다 - 빠르면 기계가 되고, 멎어 있으면 그림이 된다.
 	var now: float = float(Time.get_ticks_msec()) * 0.001
-	_target.position = VANISH + Vector2(0.0, sin(now * BREATH_SPEED) * BREATH)
-	_target.rotation = now * SPIN_SPEED
+	_target.position = vanish + Vector2(0.0, sin(now * BREATH_SPEED) * BREATH)
+	_target.rotation = _spin(now)
 	# **다가갈수록 세상이 걷힌다.** 바닥·책장·천장이 흐려져서 끝에는 그것과 내 등불만 남는다.
 	# 끝까지 복도가 그대로면 "도착했다"가 눈에 안 보인다.
 	#
 	# 선을 그리는 판 전체에 한 번에 거는 것이라 그리는 쪽은 이걸 몰라도 된다.
 	_lines.modulate.a = 1.0 - smoothstep(0.35, 0.92, _depth)
 
+	# 물러설 때는 이쪽을 보고 걷는다 — 그것을 마주 본 채 뒷걸음질하는 그림이다.
+	# 등불을 오른쪽으로 비켜 놓는다. **뒷모습에서는 등불이 앞(=위)에 뜨는데, 그대로 두면
+	# 빛이 머리를 뚫고 나오는 것처럼 보인다.** 어깨 너머로 밀어야 옆에 띄우고 가는 것으로
+	# 읽힌다. **등불 그림과 빛을 같은 값으로 민다** - 따로 두면 빛만 옆에서 새는 꼴이 된다.
+	# `lantern_at()`이 이미 `aside`를 더해서 돌려준다. 여기서 또 더하면 **빛만 두 번 밀려서**
+	# 등불 그림과 어긋난다.
+	#
+	# **어둠(`_hole`)보다 먼저 놓는다.** 뒤에 두면 구멍이 한 프레임 늦은 자리를 쓴다.
+	_figure.aside = LAMP_ASIDE / float(FIGURE_ZOOM)
+	_figure.show_state("south" if backing else "north", walking)
+	# 계산으로 다시 맞추지 않고 **그림이 실제로 있는 자리를 읽는다.** 배율·비켜놓기·판
+	# 흔들림이 이미 다 들어 있어서, 하나라도 바뀌면 빛만 딴 데서 나던 일이 없어진다.
+	# **화면이 흔들리는 몫(`position`)을 빛에도 더한다.** 등불 그림은 흔들리는 판 위에 있고
+	# 빛은 `CanvasLayer` 위라 흔들림이 안 걸린다 - 그냥 두면 그것이 다가와 화면이 울 때
+	# 등불만 떨고 빛은 제자리에 박혀 있어서 둘이 따로 논다.
+	_lamp.position = _figure.lantern_global()
+
 	# 다가갈수록 어둠이 먹어든다. **등불까지 눌린다** - 그래야 닿는 순간 그 자리에서
 	# 불이 되살아나는 것으로 읽힌다. 걸음에 물려 있으므로 멈추면 이것도 멎는다.
 	# **등불 쪽만 남기고 어둠이 조여든다.** 통짜 검은 판을 알파로 여닫으면 화면이 흐려질 뿐이라
 	# 세상이 안 사라진다. 구멍의 반경을 줄여야 바깥부터 먹히고 등불 쪽만 남는다.
 	var eaten: float = smoothstep(DARK_FROM, DARK_TO, _depth)
-	# **등불은 걷는 내내 그대로다.** 어둠이 조여드는 것과 같이 줄이면 다가갈수록 내 불이
-	# 작아져서 이상하다. 닿기 직전에만 스르르 눌린다.
-	_lamp.scale = Vector2.ONE * lerpf(1.0, DARK_LAMP, smoothstep(0.80, 1.0, _depth))
+	# **등불은 끝까지 그대로 있다가 한 번에 꺼진다**(회원님). 닿기 직전에 스르르 줄이면
+	# 기름이 떨어져 사그라드는 것으로 보이는데, 이건 그런 게 아니다 - 마주친 순간
+	# **팟 하고 꺼진다**(`_process`의 도착 처리).
+	_lamp.scale = Vector2.ONE
 	# 구멍이 줄면서 **남은 자리도 같이 흐려진다.** 줄기만 하면 조리개처럼 보인다.
 	_hole(lerpf(OPEN_WIDE, 0.0, eaten), eaten * 0.92)
 
-	_figure.show_state("north", walking)
-	# 등불을 오른쪽으로 비켜 놓는다. **뒷모습에서는 등불이 앞(=위)에 뜨는데, 그대로 두면
-	# 빛이 머리를 뚫고 나오는 것처럼 보인다.** 어깨 너머로 밀어야 옆에 띄우고 가는 것으로
-	# 읽힌다. **등불 그림과 빛을 같은 값으로 민다** - 따로 두면 빛만 옆에서 새는 꼴이 된다.
-	# `lantern_at()`이 이미 `aside`를 더해서 돌려준다. 여기서 또 더하면 **빛만 두 번 밀려서**
-	# 등불 통과 어긋난다.
-	_figure.aside = LAMP_ASIDE / float(FIGURE_ZOOM)
-	_lamp.position = _figure.position + _figure.lantern_at() * float(FIGURE_ZOOM)
 	_lines.queue_redraw()
 
 
@@ -335,6 +564,9 @@ func _build() -> void:
 	_figure.sprite_frames = load(FRAMES)
 	_figure.scale = Vector2(FIGURE_ZOOM, FIGURE_ZOOM)
 	_figure.position = Vector2(SCREEN.x * 0.5, SCREEN.y - 96.0)
+	# 이 화면에서는 **등불이 몸을 안 따라간다.** 뒤돌아본다고 등불이 반대편으로 튀면
+	# 띄워 둔 것이 아니라 들고 있는 것으로 보인다.
+	_figure.lantern_facing = "north"
 	_figure.z_index = 2
 	add_child(_figure)
 
@@ -387,37 +619,62 @@ func _build() -> void:
 class _Burst extends Node2D:
 	## **몇 개 안 되고 폭이 제각각이라야 깨진 조각으로 보인다.** 얇은 살을 고르게 여럿 두면
 	## 폭죽이나 햇살 무늬가 된다. 껍질이 갈라진 자리는 크기도 각도도 제멋대로다.
-	const RAYS := 9
+	const RAYS := 14
 	const REACH := 1800.0   ## 다 뻗었을 때의 길이. 화면 대각선보다 길어야 구석까지 덮는다
 	## 다 벌어졌을 때의 반각(라디안). 조각마다 이 사이에서 뽑는다.
 	##
 	## **끝에는 살끼리 붙어 화면을 다 채운다.** 조각 아홉이면 간격이 0.70이라 반각이 0.35를
 	## 넘으면 겹치기 시작한다. 넉넉히 넘겨서 마지막엔 틈이 안 남게 한다 - 다 채운 그 순간이
 	## 전환하는 자리다.
-	## **가장 좁은 조각도 간격의 절반(0.35)을 넘어야** 틈이 안 남는다. 0.16으로 뽑힌 것들이
-	## 사이를 못 메워서 검은 쐐기가 남아 있었다.
-	const WIDE_LOW := 0.17
-	const WIDE_HIGH := 0.34
+	## **가장 좁은 조각도 간격의 절반을 넘어야** 틈이 안 남는데, 0.17은 그 절반이었다 -
+	## 다 터져도 검은 쐐기가 남아 있었다("몇 개 덜 찼어").
+	##
+	## 조각 열넷이면 간격이 0.449이고, 각도까지 흔들리므로(`ANGLE_JITTER`) 최대 0.606까지
+	## 벌어진다. 그 절반인 0.303을 넘겨 잡는다. **조각을 늘려 잘게 쪼갠 것**이라 아홉 개일
+	## 때(0.52~0.74)보다 훨씬 가늘다. 자라는 동안에는 `alive`가 곱해져 더 뾰족하다.
+	const WIDE_LOW := 0.33
+	const WIDE_HIGH := 0.47
+	## 각도를 슬롯의 이만큼까지 흔든다. **0.7은 너무 컸다** - 조각이 이웃에 바싹 붙으면서
+	## 반대쪽에 폭보다 넓은 틈이 생겼다.
+	const ANGLE_JITTER := 0.35
 	const POP := 0.05       ## 조각 하나가 튀어나오는 데 걸리는 몫. 짧아야 "툭"이다
 
 	## 앞 조각과의 사이(초). **점점 좁아진다** — 툭 … 툭 … 툭 . 두두두두두.
-	## 합이 곧 `BURST_FOR`이므로 둘을 같이 고쳐야 한다.
-	const GAPS := [1.0, 0.7, 0.5, 0.3, 0.2, 0.2, 0.2, 0.2, 0.2]
+	## 여기만 고치면 터지는 시간(`_burst_for`)이 저절로 따라온다.
+	## **`RAYS`와 개수가 같아야 한다.** 조각을 늘리면서 뒤쪽을 더 촘촘하게 이어 붙였다 -
+	## 뒤가 늘어지면 두두두두가 아니라 뚝뚝뚝이 된다.
+	const GAPS := [1.0, 0.7, 0.5, 0.3, 0.2, 0.2, 0.2, 0.15, 0.15, 0.12, 0.12, 0.1, 0.1, 0.1]
 
 	## 터지는 순서. **번호대로 두면 시계방향으로 돌아가며 나온다** — 갈라지는 게 아니라
-	## 회전하는 것으로 보인다. 원을 건너뛰며 도는 순서로 섞는다(9와 4가 서로소라 한 바퀴에
-	## 모든 조각을 정확히 한 번씩 짚는다).
-	const ORDER_STEP := 4
+	## 회전하는 것으로 보인다. 원을 건너뛰며 도는 순서로 섞는다(14와 5가 서로소라 한 바퀴에
+	## 모든 조각을 정확히 한 번씩 짚는다 - **서로소가 아니면 몇 개는 아예 안 나온다**).
+	const ORDER_STEP := 5
 
 	var centre := Vector2.ZERO
 	var spread := 0.0   ## 0이면 아직 안 터졌고 1이면 다 덮었다
 
-	## 다 터지는 데 걸리는 시간(초). `GAPS`를 고치면 여기가 저절로 따라온다.
+	## 마지막 조각이 **터지기 시작하는** 시각(초).
 	static func _span() -> float:
 		var total := 0.0
 		for gap in GAPS:
 			total += gap
 		return maxf(total, 0.001)
+
+	## 지금까지 몇 조각이 터져 나왔는가. 소리를 조각마다 하나씩 내려고 밖에서 읽어 간다.
+	static func popped(spread: float) -> int:
+		var when := 0.0
+		var out := 0
+		for gap in GAPS:
+			when += gap
+			if when / duration() <= spread:
+				out += 1
+		return out
+
+	## 다 터지고 다 벌어지는 데 걸리는 시간(초). **마지막 조각도 벌어질 몫(`POP`)이 뒤에
+	## 남아 있어야 한다** - 시작 시각을 곧 끝나는 시각으로 삼았더니 마지막 조각은 나오지도
+	## 못하고 그 앞 것도 덜 벌어진 채로 화면이 켜졌다.
+	static func duration() -> float:
+		return _span() / (1.0 - POP)
 
 	func _draw() -> void:
 		if spread <= 0.001:
@@ -436,12 +693,12 @@ class _Burst extends Node2D:
 			var when := 0.0
 			for k in turn + 1:
 				when += GAPS[k]
-			var at: float = when / _span()
+			var at: float = when / duration()
 			var alive: float = clampf((spread - at) / POP, 0.0, 1.0)
 			if alive <= 0.0:
 				continue
 
-			var angle: float = TAU * (float(i) + jitter * 0.7) / float(RAYS) - PI * 0.5
+			var angle: float = TAU * (float(i) + jitter * ANGLE_JITTER) / float(RAYS) - PI * 0.5
 			var half: float = lerpf(WIDE_LOW, WIDE_HIGH, jitter) * alive
 			var reach: float = REACH * alive
 			draw_colored_polygon([
@@ -535,7 +792,7 @@ class _Lines extends Node2D:
 		var owner_scene := get_parent() as Encounter
 		if owner_scene == null:
 			return
-		var vanish: Vector2 = Encounter.VANISH
+		var vanish: Vector2 = owner_scene.vanish
 		var screen: Vector2 = Encounter.SCREEN
 		var deep: float = screen.y - vanish.y   # 지평선에서 화면 아래까지
 

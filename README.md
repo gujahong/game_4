@@ -1,164 +1,70 @@
 # 습작4
 
-세계를 건너다니는 수호자의 이야기. 다크 판타지 픽셀아트 게임.
+어둠 속을 등불 하나로 걷는 다크 판타지 픽셀아트 게임. Godot 4.7.1.
 
-> 세계를 건너다니는 자에게는 그곳이 온전히 보이지 않는다.
-> 등불이 비추는 것만 실재한다.
+**이 게임의 규칙 하나** — *등불이 비추는 것만 실재한다.* 화면에서 색을 가진 것은 등불뿐이고,
+보이는 것도 등불이 닿는 데까지다. 전투에서 불을 줄이면 세상도 UI도 같이 죽는다. 그래서
+남은 기름을 나타내는 눈금이 따로 필요 없다 — **화면이 곧 게이지다.**
 
-**이 문서는 "무엇이 어디 있는가"를 적는다.** "지금 어디까지 왔고 왜 그렇게 정했는가"는
-[`작업일지.md`](작업일지.md)에, 지켜야 할 규칙은 [`CLAUDE.md`](CLAUDE.md)에, PixelLab 쓰는
-법은 [`PIXELLAB.md`](PIXELLAB.md)에 있다. **새로 들어오면 `작업일지.md`부터 읽을 것.**
-
----
-
-## 돌려보기
-
-Godot 4.7.1. 메인 씬은 `scenes/Opening.tscn`이다.
+## 켜기
 
 ```bash
-"C:\Users\진로교육원\Desktop\Godot_v4.7.1-stable_win64.exe" --path . 
+"C:\Users\진로교육원\Desktop\Godot_v4.7.1-stable_win64.exe" --path . res://scenes/Opening.tscn
 ```
 
-씬을 골라 여는 것도 된다.
-
-| 씬 | |
+| 보고 싶은 것 | 여는 씬 |
 |---|---|
-| `scenes/Opening.tscn` | 여는 화면. 어둠 → 글 → 등불 → 관문 |
-| `scenes/Room.tscn` | 서고를 걸어다닌다. **여기서 시작하면 조우·전투까지 이어진다** |
-| `scenes/Encounter.tscn` | 조우 연출. 검은 화면에 흰 선 |
-| `scenes/Battle.tscn` | 1인칭 턴제 전투 |
-| `scenes/Walk.tscn` | 옛 조우 연출(일러스트 한 장). 안 쓰지만 남겨둠 |
-| `scenes/DialogueTest.tscn` · `PhotoTest.tscn` | 확인용 |
+| 처음부터 (경구 → 관문) | `scenes/Opening.tscn` |
+| 조우 복도 → 전투 | `scenes/Encounter.tscn` |
+| 전투 구도만 (25초 건너뜀) | `scenes/Encounter.tscn` 뒤에 `-- --battle` |
+| 등불 밝기 확인 사진 | `scenes/Battle.tscn` 뒤에 `-- --capture` |
 
-자산을 새로 넣은 뒤에는 한 번 들여와야 한다.
+`Esc`로 끄고 `F11`로 전체화면. 화면은 **960x540**을 정수배로만 늘린다.
+
+## 구조
+
+로직과 화면을 가른다. **규칙은 화면을 모르고, 화면은 규칙을 안다.**
+
+```
+scripts/
+  walk/Encounter.gd      1점 투시 복도. 걷기 → 붙잡힘 → 암전 → 빛살 → 전투를 얹음
+  battle/
+    Battle.gd            전투 규칙. 화면을 전혀 모른다 (시그널만 쏨)
+    BattleStage.gd       전투를 아무 씬에나 얹는 무대. 카메라를 돌리고 규칙과 글자를 잇는다
+    BattleHud.gd         글자와 메뉴. 배치도 연출도 모른다
+    LightMenu.gd         등불에서 뻗는 빛줄기 메뉴
+    EnemyDef.gd          적 하나 = 리소스 하나. 전투 코드는 안 건드린다
+    TalkOption.gd        말길 하나. 무엇이 뜰지도 무슨 일이 벌어질지도 적이 정한다
+  Music.gd  Sfx.gd  EmberText.gd
+```
+
+전투는 **씬을 갈아타지 않는다.** 조우 화면 위에 `BattleStage`가 얹히고, 서 있던 그것과 내가
+좌우로 옮겨 앉는다 — 아무것도 사라지지 않으니 카메라만 돈 것으로 읽힌다.
+
+## 만드는 것들
+
+그림도 소리도 **코드로 찍는다.** `tools/`의 스크립트는 전부 0원이고 몇 번이든 다시 돌릴 수 있다.
 
 ```bash
-"C:\...\Godot_v4.7.1-stable_win64.exe" --headless --path . --import
+Godot --headless --path . --script res://tools/_sfx.gd          # 효과음 열여섯 개
+Godot --headless --path . --script res://tools/_lantern_big.gd  # 전투용 큰 등불
+Godot --headless --path . --script res://tools/_probe_sfx.gd    # 소리가 실제로 담겼는지 잼
 ```
 
----
+PixelLab로 뽑는 것(인물·적)은 **다섯 단계 통틀어 200생성**이 상한이다. 뽑기 전에 프롬프트와
+비용을 확인받는다.
 
-## 게임의 뼈대
+## 그림 규칙
 
-```
-여는 화면 (Opening)
-      ↓
-서고를 걷는다 (Room)  →  조우 자리에 닿는다  →  조우 연출 (Encounter)
-                                                      ↓  ↑를 눌러 다가간다
-                                              1인칭 전투 (Battle)
-```
+**놓일 크기 그대로 뽑는다.** 크게 뽑아 줄이거나 작게 뽑아 늘리지 않는다. 내부 해상도가
+960x540이고 화면 전체를 정수배로만 확대하므로, 놓일 크기로 만들면 도트 하나가 화면 픽셀
+정수 개에 딱 떨어진다. 크기가 안 맞으면 **확대/축소 대신 투명 여백을 자르거나 덧붙인다.**
 
----
+같은 이유로 픽셀 글꼴은 네이티브 크기(16px)의 정수배로만 쓴다.
 
-## 정해진 것
+## 더 읽을 것
 
-| | |
-|---|---|
-| 내부 해상도 | **960x540.** 정수배로만 확대(1080p x2, 4K x4) |
-| 화풍 | 컬러로 뽑고 **실행 중에 디더 필터를 씌운다.** "색이 있는데 흑백 필터를 낀 느낌" |
-| 색 | **화면에서 색을 가진 것은 등불뿐.** 등불은 필터 판보다 위 레이어에 둔다 |
-| 그림 크기 | **놓일 크기 그대로 만든다.** 늘리거나 줄이지 않는다 |
-| 세계관 | 세상들은 초월적인 무언가의 **꿈**이다. 주인공은 그 꿈으로 건너가는 비밀 결사의 수호자 |
-| 거점 | 아카식 서고 — 모든 것이 기록된 곳 |
-| 전투 | **등불에서 무기를 뽑는다. 뽑을수록 등불이 어두워진다** — 빛 자체가 탄약이다 |
-
----
-
-## 코드
-
-**로직과 화면을 가른다.** 로직 쪽은 화면을 모르고, 화면 쪽은 규칙을 모른다. 새 적은 리소스
-파일 하나, 새 UI는 화면 쪽만 손대면 되게 하려는 것이다.
-
-### 맵 (`scripts/map/`)
-
-| | |
-|---|---|
-| `Hero.gd` | 자리와 이동 규칙. **화면을 모른다.** 4방향만 쓰고 대각선을 여기서 거른다 |
-| `HeroSprite.gd` | 방향과 걷는지만 받아 그림을 고른다. **규칙을 모른다.** 떠 있는 등불도 여기서 얹는다 |
-| `Walker.gd` | 둘을 엮고 카메라·등불빛·필터를 맡는다. 조우 자리도 여기 |
-| `TilesetRoom.gd` | PixelLab Wang 타일셋(16장 시트 + metadata)을 읽어 코드로 TileSet을 세운다 |
-
-### 전투 (`scripts/battle/`)
-
-| | |
-|---|---|
-| `Battle.gd` | 전투 진행. **화면을 모르고 시그널만 쏜다** |
-| `BattleScreen.gd` | 그 시그널을 받아 그린다 |
-| `Lantern.gd` | 등불 5단계. 밝기별 수치표가 전부 여기 |
-| `LightMenu.gd` | 메뉴가 상자가 아니라 **등불에서 뻗는 빛줄기**다 |
-| `EnemyDef.gd` | 적 정의(Resource). **새 적 = 리소스 하나**, 코드 무수정 |
-
-### 대사 (`scripts/dialogue/`)
-
-`DialogueController.gd`(진행) / `DialogueUI.gd`(화면). 우주쓰레기게임에서 옮겨왔고 겉모습만
-새로 짰다. **주석에 남은 버그 기록이 코드보다 값어치가 있다.**
-
-### 그 밖에
-
-| | |
-|---|---|
-| `scripts/Opening.gd` | 여는 화면 전체. 시간 하나로 화면을 정해서 아무 시점이나 캡처된다 |
-| `scripts/walk/Encounter.gd` | 조우 연출(선). 소실점 하나 + 그것 |
-| `scripts/walk/WalkScene.gd` | 옛 조우 연출(일러스트). 조우 → 전투 전환이 여기 있다 |
-| `scripts/LampGlow.gd` | 등불 빛. **필터 판보다 위**에 있어야 색을 지킨다 |
-| `scripts/KoreanFont.gd` | Neo둥근모 16px. **정수배로만 쓴다** |
-
----
-
-## 셰이더 (`shaders/`)
-
-| | |
-|---|---|
-| `DitherFilter.gdshader` | 노드 하나에 씌우는 디더 |
-| `DitherScreen.gdshader` | **화면 전체**에 한 번 씌우는 판. 이 아래는 전부 같은 필터를 통과한다 |
-| `DitherLight.gdshader` | 등불 빛도 같은 격자로 흩어지게 |
-| `PortalWave.gdshader` | 문 너머가 제자리에서 떤다 |
-| `PortalLeak.gdshader` | 관문에서 세계가 새어 나온다. 방향이 있고 멀수록 커진다 |
-| `CrtScreen.gdshader` | 확정 아님 |
-
-**디더 격자는 화면에 못 박혀 있다**(`dither_on_screen`). 그림에 붙여두면 확대할 때 격자가
-다시 짜여서 그물이 표면 위를 기어다닌다.
-
----
-
-## 도구 (`tools/`)
-
-전부 `--headless --script`로 돌리는 일회용 스크립트다. **비용이 0이고 몇 번이고 다시 돌린다.**
-
-| | |
-|---|---|
-| `_lantern.gd` | 등불 그림을 찍는다 |
-| `_silhouette.gd` | 등불 든 순례자 실루엣(여는 화면용) |
-| `_frames.gd` | 방향별 프레임을 `SpriteFrames`로 엮는다 |
-| `_reference.gd` | v3 회전에 넣을 참조 그림. **캔버스를 잘라서** 넣어야 한다 |
-| `_hood.gd` | 두건 속 얼굴을 검게 지운다 |
-| `_cutbg.gd` | 배경을 도려낸다. `no_background`가 안 먹었을 때 |
-| `_unlantern.gd` | 손에 든 등불을 지운다 |
-| `_cutout.gd` · `_extend.gd` | 관문 도려내기 / 옆으로 늘리기 |
-| `_split.gd` | 좌우로 갈라진 그림을 이음매에서 자른다 |
-| `_zoom.gd` · `_palette.gd` | 확대해 보기 / 쓰인 색 세어 보기 |
-
-`tools/_*.png`는 확인용 캡처라 `.gitignore`에 걸려 있다.
-
----
-
-## 자산
-
-```
-assets/characters/pilgrim_rot/   지금 쓰는 주인공. 16x32, 4방향, 손이 빈 순례자
-assets/characters/pilgrim*/      앞선 판들(등불 든 것 등). 안 쓰지만 남겨둠
-assets/enemies/watcher.png       그것 — 눈으로 뒤덮인 고리
-assets/photos/                   일러스트. gate_4_wide(여는 화면), archive(서고)
-assets/tilesets/marble_void_*    서고 바닥 ↔ 공허. 32px Wang 16장
-assets/fonts/NeoDunggeunmo.ttf   글꼴. 갈무리 두 벌은 안 쓰고 남아 있다
-```
-
----
-
-## 아직 안 고친 것
-
-- 조우 화면에 **입체감이 없다.** 사각 테가 소실점을 중심으로 균등하게 벌어져 터널 정면으로 읽힌다
-- `DitherFilter`의 `input_black` / `input_white`가 uniform과 슬라이더만 있고 `fragment()`에서 안 쓰인다
-- `PhotoStack.PHOTO_SIZE`가 448인데 실제 사진은 대부분 320이다
-- `chapel448.png`가 하얗게 날아가 있다
-- `assets/fonts/Galmuri*.ttf` 10MB가 안 쓰이고 남아 있다
+- `작업일지.md` — 지금 어디까지 왔고, 최근에 뭘 왜 그렇게 정했고, 다음에 뭘 할지.
+  **다른 컴퓨터에서 이어 할 때 여기부터 읽는다.**
+- `CLAUDE.md` — 작업 규칙
+- `PIXELLAB.md` — PixelLab 사용법과 한도

@@ -12,7 +12,12 @@ class_name LightMenu
 
 signal chosen(index: int)
 
-const ORIGIN := Vector2(480, 453)   ## 빛이 나오는 자리. 화면 아래 가운데, 내가 등불을 든 위치다.
+## 빛이 나오는 자리 - 내가 등불을 든 곳이다. **상수가 아니라 값이다**: 전투를 조우 복도에
+## 그대로 얹으면서 내가 화면 오른쪽에 서게 됐고, 빛줄기도 거기서 뻗어야 한다.
+var origin := Vector2(480, 453):
+	set(value):
+		origin = value
+		queue_redraw()
 
 ## 빛줄기는 **가는 선이 아니라 짧은 원뿔**이다. 꼭짓점이 등불이고 밖으로 갈수록 넓어지면서
 ## 스러진다. 선으로 그리면 길쭉한 형광등에서 나온 것처럼 보이는데, 등불은 그렇게 안 비친다.
@@ -24,7 +29,27 @@ const CONE_HALF_WIDTH := 81.0    ## 맨 끝에서의 반너비. 글자를 품어
 const CONE_OVERSHOOT := 1.65     ## 글자 자리보다 이만큼 더 뻗는다
 const CONE_OVERSHOOT_PICKED := 1.9
 const CONE_FALLOFF_AT := 0.72    ## 이 지점까지는 밝기를 지키고, 그 뒤로 스러진다
-const MIN_TEXT_ALPHA := 0.34
+## 등불이 다 죽어도 글자는 이만큼은 남는다. **0.34로는 뒤 배경이 비쳐서 안 읽혔다** -
+## 안 보여야 하는 것은 적이지 내 손이 아니다.
+const MIN_TEXT_ALPHA := 0.62
+
+## 글자 크기. **픽셀 폰트라 네이티브(16)의 정수배여야** 도트가 안 뭉개진다 - 그래서 24 같은
+## 어중간한 값은 없고 다음 칸이 32다.
+const TEXT_SIZE := 32
+
+## 글자 색. **밝은 글씨를 밝은 빛줄기에 얹으면 서로 묻힌다** - 빛을 진하게 할수록 더 안
+## 읽혔던 것이 이것 때문이다. 어두운 테를 둘러서 빛 위에 얹힌 것으로 만든다.
+const INK := Color("fff0cf")          ## 안 고른 것
+const INK_PICKED := Color("ffffff")   ## 고른 것. 제일 밝다
+const OUTLINE := Color("140f08")
+const OUTLINE_WIDTH := 6
+
+## 빛줄기의 진하기. 고른 것과 안 고른 것.
+##
+## **반투명하면 뒤가 비쳐서 글자가 안 읽힌다.** 전에는 0.72/0.26이라 안 고른 줄기가 배경에
+## 묻혔다. 진하게 깔아야 글자가 빛 위에 얹힌 것으로 보인다.
+const BEAM_PICKED := 0.95
+const BEAM_REST := 0.5
 
 var light: float = 1.0:  ## 등불 밝기(0~1). 빛줄기의 진하기를 정한다.
 	set(value):
@@ -68,6 +93,9 @@ func setup(options: Array) -> void:
 		label.queue_free()
 	_labels.clear()
 	_anchors.clear()
+	# **들어가자마자 첫째가 골라져 있다.** 앞 메뉴에서 쓰던 번호가 남아 있으면, 항목 수가
+	# 다를 때 아무것도 안 골라진 채로 뜬다 - 대화나 대상처럼 줄기가 하나뿐인 데서 특히 그렇다.
+	_index = 0
 
 	for i in options.size():
 		var anchor: Vector2 = options[i]["anchor"]
@@ -75,7 +103,9 @@ func setup(options: Array) -> void:
 
 		var label := Label.new()
 		label.text = options[i]["text"]
-		KoreanFont.apply(label)
+		KoreanFont.apply(label, TEXT_SIZE)
+		label.add_theme_color_override("font_outline_color", OUTLINE)
+		label.add_theme_constant_override("outline_size", OUTLINE_WIDTH)
 		label.mouse_filter = Control.MOUSE_FILTER_STOP
 		label.mouse_entered.connect(_on_hover.bind(i))
 		label.gui_input.connect(_on_label_input.bind(i))
@@ -99,19 +129,19 @@ func _draw() -> void:
 	var alpha := light if enabled else light * 0.4
 	for i in _anchors.size():
 		var selected := i == _index and enabled
-		_draw_cone(_anchors[i], (0.72 if selected else 0.26) * alpha, selected)
+		_draw_cone(_anchors[i], (BEAM_PICKED if selected else BEAM_REST) * alpha, selected)
 
 
 ## 등불에서 나가는 빛 한 줄기. 두 토막으로 그린다 - 글자가 놓이는 데까지는 밝기를 지키고,
 ## 그 뒤로 스러진다. 한 토막으로 그리면 글자 자리에서 이미 빛이 다 죽어서 글자가 어둠에
 ## 뜬 것처럼 보인다(`draw_polygon`이 꼭짓점 색을 섞어준다).
 func _draw_cone(anchor: Vector2, strength: float, picked: bool) -> void:
-	var direction := (anchor - ORIGIN).normalized()
+	var direction := (anchor - origin).normalized()
 	var across := Vector2(-direction.y, direction.x)
-	var reach := ORIGIN.distance_to(anchor) * (CONE_OVERSHOOT_PICKED if picked else CONE_OVERSHOOT)
-	var apex := ORIGIN + direction * APEX_INSET
-	var hold := ORIGIN + direction * (reach * CONE_FALLOFF_AT)
-	var tip := ORIGIN + direction * reach
+	var reach := origin.distance_to(anchor) * (CONE_OVERSHOOT_PICKED if picked else CONE_OVERSHOOT)
+	var apex := origin + direction * APEX_INSET
+	var hold := origin + direction * (reach * CONE_FALLOFF_AT)
+	var tip := origin + direction * reach
 	var hold_half := CONE_HALF_WIDTH * CONE_FALLOFF_AT
 
 	var beam := colour
@@ -137,7 +167,7 @@ func _draw_cone(anchor: Vector2, strength: float, picked: bool) -> void:
 func _refresh_labels() -> void:
 	for i in _labels.size():
 		var selected := i == _index and enabled
-		var ink := colour if selected else UiStyle.TEXT
+		var ink := INK_PICKED if selected else INK
 		var alpha := maxf(light, MIN_TEXT_ALPHA)
 		if not enabled:
 			alpha *= 0.5
@@ -155,7 +185,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_DOWN, KEY_RIGHT:
 			_move(1)
 		KEY_ENTER, KEY_SPACE, KEY_KP_ENTER:
-			chosen.emit(_index)
+			_choose(_index)
 		_:
 			return
 	get_viewport().set_input_as_handled()
@@ -163,6 +193,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _move(delta: int) -> void:
 	_index = wrapi(_index + delta, 0, _anchors.size())
+	Sfx.play(self, Sfx.MOVE, -14.0, randf_range(0.94, 1.08))
 	_refresh_labels()
 	queue_redraw()
 
@@ -180,4 +211,10 @@ func _on_label_input(event: InputEvent, index: int) -> void:
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		_index = index
-		chosen.emit(index)
+		_choose(index)
+
+
+## 고를 때는 **불이 한 번 훅 인다.** 옮길 때의 마른 딸깍과 갈라야 고른 것이 사건이 된다.
+func _choose(index: int) -> void:
+	Sfx.play(self, Sfx.PICK, -10.0)
+	chosen.emit(index)

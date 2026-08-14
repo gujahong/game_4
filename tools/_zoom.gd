@@ -5,17 +5,10 @@ extends SceneTree
 
 ## 여러 장을 주면 가로로 이어 붙여 한 장으로 만든다.
 const SOURCES := [
-	"res://assets/characters/pilgrim_rot/walk/south/0.png",
-	"res://assets/characters/pilgrim_rot/walk/south/1.png",
-	"res://assets/characters/pilgrim_rot/walk/south/2.png",
-	"res://assets/characters/pilgrim_rot/walk/south/3.png",
-	"res://assets/characters/pilgrim_rot/walk/west/0.png",
-	"res://assets/characters/pilgrim_rot/walk/west/1.png",
-	"res://assets/characters/pilgrim_rot/walk/west/2.png",
-	"res://assets/characters/pilgrim_rot/walk/west/3.png",
+	"res://assets/characters/pilgrim/lantern_big.png",
 ]
 const OUTPUT := "res://tools/_zoom.png"
-const SCALE := 12
+const SCALE := 26
 
 
 func _init() -> void:
