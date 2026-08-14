@@ -104,10 +104,6 @@ var _burst: _Burst
 const DARK_FROM := 0.22
 const DARK_TO := 0.62
 
-## 다 어두워진 뒤의 걸음 배속. **캄캄한 채로 오래 걸으면 화면이 안 바뀌어서 버그로 느낀다.**
-## 그 구간을 빨리 지나가고, 대신 앞쪽을 느리게 걷는다(`WALK_SPEED`).
-const DARK_PACE := 4.0
-
 ## 이만큼 걸으면 **그것이 직접 다가오기 시작한다.** 그 뒤로는 멈춰도 거리가 줄어든다 -
 ## 걸음이 갑자기 빨라지는 것이 "저것이 오고 있다"로 읽혀서, 아예 그렇게 만든 것이다.
 const SEIZE_AT := 8.0
@@ -142,7 +138,8 @@ const SETTLE := 0.55    ## 빛살이 걷히고 화면이 원래대로 돌아오�
 const LINGER := 0.9     ## 돌아온 화면을 그대로 두는 시간. 그 뒤에 전투로 넘어간다
 ## **번쩌어어어억.** 주황빛이 차오르고, 다 덮인 채로 한참 버틴다. 여기가 길어야 소리를
 ## 길게 늘여 부른 그 느낌이 난다 - 짧으면 그냥 전환 효과다.
-const BURST_FOR := 1.5  ## 빛살이 두두두 터져 나오는 시간
+## 빛살이 두두두 터져 나오는 시간. `_Burst.GAPS`의 합과 같아야 마지막 조각이 제때 나온다.
+const BURST_FOR := 3.5
 const FLOOD_FOR := 1.6
 ## 다 덮인 채로 두는 시간. **짧아야 한다** - 빛이 화면을 채우면 그 안에서 이미 바뀌어 있어야
 ## 한다. 길게 끌면 "빛이 찼다가 → 가라앉고 → 바뀐다"가 되어 전환이 눈에 보인다.
@@ -183,10 +180,12 @@ func _process(delta: float) -> void:
 			_seized = true
 
 	if walking or _seized:
-		# 캄캄해진 뒤로는 빨리 지나간다. 앞쪽은 그만큼 느리게 걷는다.
-		var pace: float = WALK_SPEED * (DARK_PACE if _depth >= DARK_TO else 1.0)
+		# **어두워졌다고 빨라지지 않는다.** 전에는 캄캄한 구간을 빨리 지나가려고 걸음을
+		# 올렸는데, 붙잡히기도 전에 갑자기 빨라져서 두 번 빨라지는 꼴이었다. 빨라지는 것은
+		# 그것이 오는 것 하나뿐이라야 그 순간이 산다.
+		var pace: float = WALK_SPEED
 		if _seized:
-			pace = maxf(pace, WALK_SPEED * SEIZE_PACE)
+			pace = WALK_SPEED * SEIZE_PACE
 		_depth = minf(_depth + pace * delta, 1.0)
 		_flow += pace * delta * float(RUNGS)
 	_place(walking)
@@ -397,12 +396,28 @@ class _Burst extends Node2D:
 	## 전환하는 자리다.
 	## **가장 좁은 조각도 간격의 절반(0.35)을 넘어야** 틈이 안 남는다. 0.16으로 뽑힌 것들이
 	## 사이를 못 메워서 검은 쐐기가 남아 있었다.
-	const WIDE_LOW := 0.44
-	const WIDE_HIGH := 0.80
-	const POP := 0.07       ## 조각 하나가 튀어나오는 데 걸리는 몫. 짧아야 "툭"이다
+	const WIDE_LOW := 0.17
+	const WIDE_HIGH := 0.34
+	const POP := 0.05       ## 조각 하나가 튀어나오는 데 걸리는 몫. 짧아야 "툭"이다
+
+	## 앞 조각과의 사이(초). **점점 좁아진다** — 툭 … 툭 … 툭 . 두두두두두.
+	## 합이 곧 `BURST_FOR`이므로 둘을 같이 고쳐야 한다.
+	const GAPS := [1.0, 0.7, 0.5, 0.3, 0.2, 0.2, 0.2, 0.2, 0.2]
+
+	## 터지는 순서. **번호대로 두면 시계방향으로 돌아가며 나온다** — 갈라지는 게 아니라
+	## 회전하는 것으로 보인다. 원을 건너뛰며 도는 순서로 섞는다(9와 4가 서로소라 한 바퀴에
+	## 모든 조각을 정확히 한 번씩 짚는다).
+	const ORDER_STEP := 4
 
 	var centre := Vector2.ZERO
 	var spread := 0.0   ## 0이면 아직 안 터졌고 1이면 다 덮었다
+
+	## 다 터지는 데 걸리는 시간(초). `GAPS`를 고치면 여기가 저절로 따라온다.
+	static func _span() -> float:
+		var total := 0.0
+		for gap in GAPS:
+			total += gap
+		return maxf(total, 0.001)
 
 	func _draw() -> void:
 		if spread <= 0.001:
@@ -416,8 +431,12 @@ class _Burst extends Node2D:
 
 			# **한꺼번에 벌어지지 않고 하나씩 튀어나온다 — 툭, 툭, 툭, 두두두두.**
 			# 터지는 시각을 앞은 뜸하게 뒤는 촘촘하게 놓으면 그 박자가 나온다.
-			# 터지는 시각도 조금씩 어긋나게. 고르면 박자가 기계처럼 들린다.
-			var at: float = pow((float(i) + jitter * 0.8) / float(RAYS), 0.55)
+			# 이 조각이 몇 번째로 터지는가. 번호대로면 시계방향으로 돌아가며 나온다.
+			var turn: int = (i * ORDER_STEP) % RAYS
+			var when := 0.0
+			for k in turn + 1:
+				when += GAPS[k]
+			var at: float = when / _span()
 			var alive: float = clampf((spread - at) / POP, 0.0, 1.0)
 			if alive <= 0.0:
 				continue
