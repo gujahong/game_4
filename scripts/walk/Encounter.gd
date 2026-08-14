@@ -124,9 +124,12 @@ const FLASH_GLARE := 0.62  ## 그때 주황 판이 덮는 정도. 눈을 때리�
 ## **휙!** 번쩍이 차오른 그 자리에서 조리개가 단숨에 열린다. 이게 "휙"이고,
 ## 그 뒤로 이어지는 것이 "번쩌어어억"이다.
 const OPEN_AT := 6.15
-const OPEN_FOR := 0.55
+const SETTLE := 0.35    ## 빛살이 걷히고 화면이 원래대로 돌아오는 시간
+const SLIDE := 1.0      ## 그것과 내가 좌우로 갈라서는 시간
+const SLIDE_BY := 260.0
 ## **번쩌어어어억.** 주황빛이 차오르고, 다 덮인 채로 한참 버틴다. 여기가 길어야 소리를
 ## 길게 늘여 부른 그 느낌이 난다 - 짧으면 그냥 전환 효과다.
+const BURST_FOR := 1.5  ## 빛살이 두두두 터져 나오는 시간
 const FLOOD_FOR := 1.6
 ## 다 덮인 채로 두는 시간. **짧아야 한다** - 빛이 화면을 채우면 그 안에서 이미 바뀌어 있어야
 ## 한다. 길게 끌면 "빛이 찼다가 → 가라앉고 → 바뀐다"가 되어 전환이 눈에 보인다.
@@ -148,7 +151,7 @@ func _process(delta: float) -> void:
 		_close_in()
 		# 다 덮인 뒤 잠깐 그대로 둔다. **화면이 주황으로 균일할 때 넘겨야 이음매가 안 보인다** -
 		# 덮이자마자 바꾸면 툭 끊긴 것으로 읽힌다.
-		if _arrived >= OPEN_AT + OPEN_FOR + FLOOD_FOR + HOLD:
+		if _arrived >= OPEN_AT + BURST_FOR + SETTLE + SLIDE:
 			get_tree().change_scene_to_file(BATTLE_SCENE)
 		return
 
@@ -183,27 +186,43 @@ func _close_in() -> void:
 
 	# 번쩍한 그 자리에서 조리개가 열린다. **빛 그림이 커지는 게 아니라 그 반경 안이 진짜로
 	# 보인다.** 앞이 느리고 끝이 급한 곡선이라야 "확" 열린다.
-	var open: float = clampf((_arrived - OPEN_AT) / OPEN_FOR, 0.0, 1.0)
+	# **화면을 하얗게 채우지 않는다**(회원님). 암전에서 빛살이 두두두 터져 나오고, 그 사이에
+	# 세상이 다시 드러난다. 밝아졌다 어두워지는 왕복이 없어서 눈이 안 피로하다.
+	var burst: float = clampf((_arrived - OPEN_AT) / BURST_FOR, 0.0, 1.0)
+	_burst.centre = _lamp.position
+	_burst.spread = burst
+	_burst.modulate.a = 1.0
+	_burst.queue_redraw()
+
+	# **빛살이 터지는 동안은 여전히 암전이다.** 조리개를 같이 열면 세상이 비쳐서 빛살과
+	# 섞이고, 갈라진 모양이 안 보인다. 검은 화면에 빛살만 두두두 나온다.
+	if burst < 1.0:
+		_hole(0.0)
+		_lamp.visible = false
+		return
+
+	# 다 터지면 **화면이 그대로 돌아온다.** 어둡게 남기지 않는다 - 조여들던 것을 여기서
+	# 통째로 풀어야 "다시 밝은 데로 나왔다"가 된다.
+	var back: float = clampf((_arrived - OPEN_AT - BURST_FOR) / SETTLE, 0.0, 1.0)
+	_burst.modulate.a = 1.0 - back
 	_lamp.visible = true
 	_lamp.self_modulate = Color(1.0, 1.0, 1.0, 1.0)
-	_hole(pow(open, 2.4) * OPEN_WIDE, (1.0 - open) * 0.75)
-	# **번쩍이 부풀려 놓은 크기에서 이어받는다.** 여기서 다시 작은 값부터 키우면 등불이
-	# 툭 줄었다 커져서 빛이 한 번 더 난 것처럼 보인다.
-	_lamp.scale = Vector2.ONE * lerpf(FLASH_SIZE, 9.0, pow(open, 2.0))
+	_lamp.scale = Vector2.ONE
+	_hole(OPEN_WIDE * back, 0.0)
+	if back < 1.0:
+		return
 
-	# 다 열린 뒤에는 주황빛이 화면을 삼킨다. 아무것도 안 보이는 채로 전투로 넘어간다.
-	if open >= 1.0:
-		var flood: float = clampf((_arrived - OPEN_AT - OPEN_FOR) / FLOOD_FOR, 0.0, 1.0)
-		_lamp.scale = Vector2.ONE * lerpf(9.0, 64.0, pow(flood, 1.5))
-		# **등불을 키우는 것만으로는 화면이 안 덮인다.** 빛이 둥글게 퍼지므로 네 귀퉁이가
-		# 끝까지 남는다. 주황 판을 맨 위에 덮어야 눈이 머는 것처럼 다 가려진다.
-		# **번쩍이 이미 씌워 놓은 만큼에서 이어받는다.** 여기서 0부터 다시 올리면 판이
-		# 옅어졌다 진해져서 두 번 밝아지는 것으로 보인다 - 등불 크기에서 겪은 것과 같다.
-		_flash.color.a = maxf(FLASH_GLARE, pow(flood, 1.7))
-		# 빛살이 등불에서 뻗어 나온다. 판이 다 덮이기 전까지 이게 화면을 갈라놓는다.
-		_burst.centre = _lamp.position
-		_burst.spread = flood
-		_burst.queue_redraw()
+	# **그것은 왼쪽으로, 나는 오른쪽으로 스윽 갈라선다.** 마주 보던 둘이 옆으로 벌어지면서
+	# 전투 구도가 된다 - 암전으로 끊지 않고 이 자리에서 그대로 넘어간다.
+	var apart: float = clampf((_arrived - OPEN_AT - BURST_FOR - SETTLE) / SLIDE, 0.0, 1.0)
+	var eased: float = 1.0 - pow(1.0 - apart, 3.0)
+	# 전투 화면의 구도와 같은 쪽으로 보낸다 — **그것이 오른쪽, 내가 왼쪽**이다.
+	_target.position.x = VANISH.x + SLIDE_BY * eased
+	_figure.position.x = SCREEN.x * 0.5 - SLIDE_BY * eased
+
+	# 흰 판은 안 쓴다. **깨진 빛살과 같이 쓰니 둘이 섞여 지저분했다** - 갈라진 모양이 판에
+	# 묻혀서 안 보인다. 하나만 남긴다.
+	_flash.color.a = 0.0
 
 
 ## 암전 속에서 등불이 깜빡이다 번쩍한다. 켜졌다 꺼지는 것을 사인 한 마루로 만든다 -
@@ -227,7 +246,7 @@ func _blink(t: float) -> void:
 	_lamp.self_modulate = Color(1.0, 1.0, 1.0, glow)
 	_lamp.scale = Vector2.ONE * lerpf(DARK_LAMP * 0.5, FLASH_SIZE, pow(strike, 0.6)) \
 		if strike > 0.01 else Vector2.ONE * lerpf(DARK_LAMP * 0.5, DARK_LAMP * 2.4, glow)
-	_flash.color.a = pow(strike, 1.6) * FLASH_GLARE
+	_flash.color.a = 0.0
 
 
 func _place(walking: bool = false) -> void:
@@ -328,8 +347,13 @@ func _build() -> void:
 ## 둥근 빛이 커지기만 하면 그냥 밝아지는 것이다. 갈라진 살이 뻗어야 **터져 나오는** 것으로
 ## 읽힌다 — 껍질이 깨지고 그 틈으로 빛이 새어 나오는 모양이다.
 class _Burst extends Node2D:
-	const RAYS := 11
-	const REACH := 1600.0   ## 다 뻗었을 때의 길이. 화면 대각선보다 길어야 구석까지 덮는다
+	## **몇 개 안 되고 폭이 제각각이라야 깨진 조각으로 보인다.** 얇은 살을 고르게 여럿 두면
+	## 폭죽이나 햇살 무늬가 된다. 껍질이 갈라진 자리는 크기도 각도도 제멋대로다.
+	const RAYS := 9
+	const REACH := 1800.0   ## 다 뻗었을 때의 길이. 화면 대각선보다 길어야 구석까지 덮는다
+	const WIDE_LOW := 0.20  ## 다 벌어졌을 때의 반각(라디안). 조각마다 이 사이에서 뽑는다
+	const WIDE_HIGH := 0.62
+	const POP := 0.07       ## 조각 하나가 튀어나오는 데 걸리는 몫. 짧아야 "툭"이다
 
 	var centre := Vector2.ZERO
 	var spread := 0.0   ## 0이면 아직 안 터졌고 1이면 다 덮었다
@@ -337,12 +361,20 @@ class _Burst extends Node2D:
 	func _draw() -> void:
 		if spread <= 0.001:
 			return
-		# 앞이 느리고 끝이 급해야 껍질이 버티다 터지는 것으로 보인다.
-		var reach: float = REACH * pow(spread, 1.7)
-		# 살이 굵어지면서 서로 만나 결국 한 덩어리가 된다.
-		var half: float = lerpf(0.012, TAU / float(RAYS) * 0.5, pow(spread, 0.8))
 		for i in RAYS:
-			var angle: float = TAU * float(i) / float(RAYS) - PI * 0.5
+			# 각도도 폭도 번호에서 뽑는다. 무작위로 뽑으면 매 프레임 다시 갈라진다.
+			var jitter: float = fposmod(sin(float(i) * 12.9898) * 43758.5453, 1.0)
+
+			# **한꺼번에 벌어지지 않고 하나씩 튀어나온다 — 툭, 툭, 툭, 두두두두.**
+			# 터지는 시각을 앞은 뜸하게 뒤는 촘촘하게 놓으면 그 박자가 나온다.
+			var at: float = pow(float(i) / float(RAYS), 0.55)
+			var alive: float = clampf((spread - at) / POP, 0.0, 1.0)
+			if alive <= 0.0:
+				continue
+
+			var angle: float = TAU * (float(i) + jitter * 0.7) / float(RAYS) - PI * 0.5
+			var half: float = lerpf(WIDE_LOW, WIDE_HIGH, jitter) * alive
+			var reach: float = REACH * alive
 			draw_colored_polygon([
 				centre,
 				centre + Vector2(cos(angle - half), sin(angle - half)) * reach,

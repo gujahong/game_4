@@ -11,8 +11,13 @@ class_name BattleScreen
 ## `resources/hollow_armour.tres`에 그대로 있으니 여기 한 줄만 되돌리면 된다.
 const ENEMY_PATH := "res://resources/watcher.tres"
 
-const ENEMY_POSITION := Vector2(480, 176)
-const LAMP_POSITION := Vector2(480, 444)  ## 빛줄기가 뻗어나오는 자리와 같다
+## **좌우 대칭을 깼다**(회원님 스케치, 2026-08-13). 적이 위 가운데, 등불이 아래 가운데면
+## 안정적이라 압도감이 안 난다. 그것을 오른쪽 위로 밀어 **화면 밖으로 넘치게** 하고 나는
+## 왼쪽 아래 구석으로 물러난다 - 조우 연출에서 세운 *"그것은 안 움직이고 내가 작아진다"*가
+## 전투에서도 이어진다.
+const ENEMY_POSITION := Vector2(680, 150)
+const LAMP_POSITION := Vector2(190, 400)  ## 빛줄기가 뻗어나오는 자리와 같다
+const ENEMY_ZOOM := 1.45                  ## 화면 밖으로 넘칠 만큼
 
 ## 상자를 두르지 않는다. 화면 대부분이 어둠이라 글자만 놓아도 읽히고, 상자를 두르면
 ## UI만 덩어리로 커 보인다. 여기 숫자는 글자가 놓이는 자리다.
@@ -49,6 +54,8 @@ func _ready() -> void:
 	var enemy: EnemyDef = load(ENEMY_PATH)
 	_enemy_sprite.texture = enemy.texture
 	_enemy_sprite.position = ENEMY_POSITION
+	# **화면 밖으로 넘치게 키운다.** 다 보이면 그냥 큰 그림이고, 잘려야 다 안 보인다.
+	_enemy_sprite.scale = Vector2.ONE * ENEMY_ZOOM
 	_lamp.position = LAMP_POSITION
 
 	_battle = Battle.new(enemy)
