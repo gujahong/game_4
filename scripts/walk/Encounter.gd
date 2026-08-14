@@ -92,6 +92,7 @@ var _figure: HeroSprite
 var _lamp: LampGlow
 var _shade: ColorRect
 var _flash: ColorRect
+var _burst: _Burst
 
 ## 어둠이 먹어드는 구간(깊이). **시간이 아니라 거리에 물린다** - 멈추면 어두워지는 것도
 ## 멎어야 한다(회원님). 컷신이 아니라 내가 다가가서 벌어지는 일이다.
@@ -117,13 +118,19 @@ const BLINKS := [
 	[4.35, 0.85, 0.45],
 ]
 const FLASH_AT := 5.55
-const FLASH_FOR := 0.55
+const FLASH_RISE := 0.55   ## 번쩍이 다 차오르는 데 걸리는 시간. 그 뒤로는 머문다
 const FLASH_SIZE := 5.5    ## 번쩍일 때 등불이 부푸는 크기
 const FLASH_GLARE := 0.62  ## 그때 주황 판이 덮는 정도. 눈을 때리는 부분이다
-const OPEN_AT := 6.05   ## 조리개가 열리기 시작하는 시각. 앞의 3초는 완전한 암전이다
-const OPEN_FOR := 3.4   ## 2.0은 눈에 확 열리다 못해 그냥 켜진 것으로 보였다
-const FLOOD_FOR := 1.4  ## 주황빛이 화면을 삼키는 시간
-const HOLD := 0.7       ## 다 덮인 채로 두는 시간. 이 사이에 넘겨야 이음매가 안 보인다
+## **휙!** 번쩍이 차오른 그 자리에서 조리개가 단숨에 열린다. 이게 "휙"이고,
+## 그 뒤로 이어지는 것이 "번쩌어어억"이다.
+const OPEN_AT := 6.15
+const OPEN_FOR := 0.55
+## **번쩌어어어억.** 주황빛이 차오르고, 다 덮인 채로 한참 버틴다. 여기가 길어야 소리를
+## 길게 늘여 부른 그 느낌이 난다 - 짧으면 그냥 전환 효과다.
+const FLOOD_FOR := 1.6
+## 다 덮인 채로 두는 시간. **짧아야 한다** - 빛이 화면을 채우면 그 안에서 이미 바뀌어 있어야
+## 한다. 길게 끌면 "빛이 찼다가 → 가라앉고 → 바뀐다"가 되어 전환이 눈에 보인다.
+const HOLD := 0.18
 
 var _depth := 0.0   ## 0이면 맨 끝, 1이면 닿음
 var _flow := 0.0    ## 사각 테가 흘러나온 양. 걸을 때만 늘어난다
@@ -180,15 +187,23 @@ func _close_in() -> void:
 	_lamp.visible = true
 	_lamp.self_modulate = Color(1.0, 1.0, 1.0, 1.0)
 	_hole(pow(open, 2.4) * OPEN_WIDE, (1.0 - open) * 0.75)
-	_lamp.scale = Vector2.ONE * lerpf(DARK_LAMP * 2.4, 7.0, pow(open, 2.0))
+	# **번쩍이 부풀려 놓은 크기에서 이어받는다.** 여기서 다시 작은 값부터 키우면 등불이
+	# 툭 줄었다 커져서 빛이 한 번 더 난 것처럼 보인다.
+	_lamp.scale = Vector2.ONE * lerpf(FLASH_SIZE, 9.0, pow(open, 2.0))
 
 	# 다 열린 뒤에는 주황빛이 화면을 삼킨다. 아무것도 안 보이는 채로 전투로 넘어간다.
 	if open >= 1.0:
 		var flood: float = clampf((_arrived - OPEN_AT - OPEN_FOR) / FLOOD_FOR, 0.0, 1.0)
-		_lamp.scale = Vector2.ONE * lerpf(7.0, 64.0, pow(flood, 1.5))
+		_lamp.scale = Vector2.ONE * lerpf(9.0, 64.0, pow(flood, 1.5))
 		# **등불을 키우는 것만으로는 화면이 안 덮인다.** 빛이 둥글게 퍼지므로 네 귀퉁이가
 		# 끝까지 남는다. 주황 판을 맨 위에 덮어야 눈이 머는 것처럼 다 가려진다.
-		_flash.color.a = pow(flood, 1.7)
+		# **번쩍이 이미 씌워 놓은 만큼에서 이어받는다.** 여기서 0부터 다시 올리면 판이
+		# 옅어졌다 진해져서 두 번 밝아지는 것으로 보인다 - 등불 크기에서 겪은 것과 같다.
+		_flash.color.a = maxf(FLASH_GLARE, pow(flood, 1.7))
+		# 빛살이 등불에서 뻗어 나온다. 판이 다 덮이기 전까지 이게 화면을 갈라놓는다.
+		_burst.centre = _lamp.position
+		_burst.spread = flood
+		_burst.queue_redraw()
 
 
 ## 암전 속에서 등불이 깜빡이다 번쩍한다. 켜졌다 꺼지는 것을 사인 한 마루로 만든다 -
@@ -202,9 +217,11 @@ func _blink(t: float) -> void:
 			glow = maxf(glow, entry[2] * sin((t - at) / span * PI))
 	# **번쩍은 깜빡임과 다른 물건이다.** 같은 자로 재면 조금 센 깜빡임일 뿐이라, 등불을 훨씬
 	# 크게 부풀리고 주황 판까지 잠깐 씌워서 눈을 때린다.
+	# **올라가서 머문다.** 사인 한 마루로 하면 들어왔다 바로 빠져서 "번쩍"이 되는데,
+	# 올라간 채로 버텨야 "번쩌어어어억"이 된다. 그 상태에서 조리개가 열려 나간다.
 	var strike := 0.0
-	if t >= FLASH_AT and t < FLASH_AT + FLASH_FOR:
-		strike = sin((t - FLASH_AT) / FLASH_FOR * PI)
+	if t >= FLASH_AT:
+		strike = smoothstep(0.0, FLASH_RISE, t - FLASH_AT)
 	glow = maxf(glow, strike)
 	_lamp.visible = glow > 0.01
 	_lamp.self_modulate = Color(1.0, 1.0, 1.0, glow)
@@ -287,8 +304,14 @@ func _build() -> void:
 	_flash = ColorRect.new()
 	_flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_flash.color = Color(1.0, 0.78, 0.42, 0.0)
+	# **치즈색을 피한다.** 주황을 그대로 쓰면 노랑기가 많아 소스처럼 보인다. 흰색 쪽으로
+	# 끌어올려야 "눈이 머는 빛"이 되고, 등불빛이라는 것도 옅게 남는다.
+	_flash.color = Color(1.0, 0.94, 0.84, 0.0)
 	flash_layer.add_child(_flash)
+
+	# 등불에서 갈라져 나오는 흰 빛살. **알이 깨지듯** 삼각뿔이 사방으로 뻗어 화면을 덮는다.
+	_burst = _Burst.new()
+	flash_layer.add_child(_burst)
 
 	# 등불은 필터 밖이자 맨 위다. 이 화면에서 색을 가진 것은 이것뿐이다.
 	var lamp_layer := CanvasLayer.new()
@@ -298,6 +321,33 @@ func _build() -> void:
 	# 이 화면에는 등불 말고 색이 없어서, 맵보다 크고 촘촘해도 된다.
 	_lamp.glow_size = 224
 	lamp_layer.add_child(_lamp)
+
+
+## 등불에서 갈라져 나오는 흰 빛살. **알이 깨지듯** 삼각뿔이 사방으로 뻗는다.
+##
+## 둥근 빛이 커지기만 하면 그냥 밝아지는 것이다. 갈라진 살이 뻗어야 **터져 나오는** 것으로
+## 읽힌다 — 껍질이 깨지고 그 틈으로 빛이 새어 나오는 모양이다.
+class _Burst extends Node2D:
+	const RAYS := 11
+	const REACH := 1600.0   ## 다 뻗었을 때의 길이. 화면 대각선보다 길어야 구석까지 덮는다
+
+	var centre := Vector2.ZERO
+	var spread := 0.0   ## 0이면 아직 안 터졌고 1이면 다 덮었다
+
+	func _draw() -> void:
+		if spread <= 0.001:
+			return
+		# 앞이 느리고 끝이 급해야 껍질이 버티다 터지는 것으로 보인다.
+		var reach: float = REACH * pow(spread, 1.7)
+		# 살이 굵어지면서 서로 만나 결국 한 덩어리가 된다.
+		var half: float = lerpf(0.012, TAU / float(RAYS) * 0.5, pow(spread, 0.8))
+		for i in RAYS:
+			var angle: float = TAU * float(i) / float(RAYS) - PI * 0.5
+			draw_colored_polygon([
+				centre,
+				centre + Vector2(cos(angle - half), sin(angle - half)) * reach,
+				centre + Vector2(cos(angle + half), sin(angle + half)) * reach,
+			] as PackedVector2Array, Color(1.0, 0.97, 0.9, 1.0))
 
 
 ## 한 칸에 꽂힌 책들. **틀과 가로줄만으로는 그냥 상자다** — 책장을 책장으로 만드는 것은

@@ -7,7 +7,9 @@ shader_type canvas_item;
 // 뚫린 자리(화면 비율 좌표)와 그 반경. 반경이 0이면 완전한 암전이다.
 uniform vec2 light_position = vec2(0.5, 0.5);
 uniform float radius : hint_range(0.0, 3.0) = 3.0;
-uniform float softness : hint_range(0.001, 1.0) = 0.22;
+// **가장자리가 넓어야 조리개 날이 아니라 빛의 경계가 된다.** 0.22로는 원이 또렷하게
+// 보여서 기계 장치처럼 읽혔다. 넓게 잡으면 어둠이 스며드는 것으로 보인다.
+uniform float softness : hint_range(0.001, 2.0) = 0.9;
 
 // 뚫린 자리까지 덮는 정도. **구멍이 줄기만 하면 조리개처럼 보인다** - 남은 자리도 같이
 // 흐려져야 어둠이 스며드는 것으로 읽힌다.
