@@ -17,7 +17,9 @@ const EDGE_PADDING := 10.0  ## 벽에 코를 박지 않게 바닥 안쪽으로 �
 ## [2026-08-13] `Walk.tscn`(일러스트 한 장을 채우는 방식)에서 `Encounter.tscn`(검은 화면에
 ## 흰 선만)으로 바꿨다. 옛것은 그대로 남아 있으니 여기 한 줄만 되돌리면 된다.
 const ENCOUNTER_SCENE := "res://scenes/Encounter.tscn"
-const ENCOUNTER_AT := Vector2(0.82, 0.5)
+## 방 위쪽 가운데다. **조우 화면에서 뒷모습(북쪽)으로 걸어 들어가므로 방에서도 위로
+## 가야 한다** - 오른쪽으로 걷다가 갑자기 위를 향하면 어긋난다.
+const ENCOUNTER_AT := Vector2(0.5, 0.04)
 const ENCOUNTER_RANGE := 20.0
 
 @onready var _room: TilesetRoom = $World/Room

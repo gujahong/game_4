@@ -91,6 +91,7 @@ var _target: Sprite2D
 var _figure: HeroSprite
 var _lamp: LampGlow
 var _shade: ColorRect
+var _flash: ColorRect
 
 ## 어둠이 먹어드는 구간(깊이). **시간이 아니라 거리에 물린다** - 멈추면 어두워지는 것도
 ## 멎어야 한다(회원님). 컷신이 아니라 내가 다가가서 벌어지는 일이다.
@@ -109,15 +110,20 @@ const OPEN_WIDE := 1.7
 ##
 ## 등불이 한 번에 팟 켜지면 그냥 조명이 들어온 것이다. 두 번 힘없이 깜빡이고, 사이에 어둠을
 ## 두고, 그 다음 번쩍해야 **되살아나는 것**으로 읽힌다.
+## 길이를 0.20에서 0.75로 늘렸다. **짧으면 스위치를 딸깍한 것**이고, 길어야 불이 스르르
+## 붙었다 사그라지는 것으로 읽힌다.
 const BLINKS := [
-	[3.25, 0.20, 0.30],   # [시각, 길이, 세기]
-	[4.15, 0.16, 0.42],
+	[3.10, 0.75, 0.30],   # [시각, 길이, 세기]
+	[4.35, 0.85, 0.45],
 ]
-const FLASH_AT := 5.05
-const FLASH_FOR := 0.32
-const OPEN_AT := 5.35   ## 조리개가 열리기 시작하는 시각. 앞의 3초는 완전한 암전이다
-const OPEN_FOR := 2.0
-const FLOOD_FOR := 0.9  ## 주황빛이 화면을 삼키는 시간
+const FLASH_AT := 5.55
+const FLASH_FOR := 0.55
+const FLASH_SIZE := 5.5    ## 번쩍일 때 등불이 부푸는 크기
+const FLASH_GLARE := 0.62  ## 그때 주황 판이 덮는 정도. 눈을 때리는 부분이다
+const OPEN_AT := 6.05   ## 조리개가 열리기 시작하는 시각. 앞의 3초는 완전한 암전이다
+const OPEN_FOR := 3.4   ## 2.0은 눈에 확 열리다 못해 그냥 켜진 것으로 보였다
+const FLOOD_FOR := 1.4  ## 주황빛이 화면을 삼키는 시간
+const HOLD := 0.7       ## 다 덮인 채로 두는 시간. 이 사이에 넘겨야 이음매가 안 보인다
 
 var _depth := 0.0   ## 0이면 맨 끝, 1이면 닿음
 var _flow := 0.0    ## 사각 테가 흘러나온 양. 걸을 때만 늘어난다
@@ -133,7 +139,9 @@ func _process(delta: float) -> void:
 	if _arrived >= 0.0:
 		_arrived += delta
 		_close_in()
-		if _arrived >= OPEN_AT + OPEN_FOR + FLOOD_FOR:
+		# 다 덮인 뒤 잠깐 그대로 둔다. **화면이 주황으로 균일할 때 넘겨야 이음매가 안 보인다** -
+		# 덮이자마자 바꾸면 툭 끊긴 것으로 읽힌다.
+		if _arrived >= OPEN_AT + OPEN_FOR + FLOOD_FOR + HOLD:
 			get_tree().change_scene_to_file(BATTLE_SCENE)
 		return
 
@@ -178,6 +186,9 @@ func _close_in() -> void:
 	if open >= 1.0:
 		var flood: float = clampf((_arrived - OPEN_AT - OPEN_FOR) / FLOOD_FOR, 0.0, 1.0)
 		_lamp.scale = Vector2.ONE * lerpf(7.0, 64.0, pow(flood, 1.5))
+		# **등불을 키우는 것만으로는 화면이 안 덮인다.** 빛이 둥글게 퍼지므로 네 귀퉁이가
+		# 끝까지 남는다. 주황 판을 맨 위에 덮어야 눈이 머는 것처럼 다 가려진다.
+		_flash.color.a = pow(flood, 1.7)
 
 
 ## 암전 속에서 등불이 깜빡이다 번쩍한다. 켜졌다 꺼지는 것을 사인 한 마루로 만든다 -
@@ -189,11 +200,17 @@ func _blink(t: float) -> void:
 		var span: float = entry[1]
 		if t >= at and t < at + span:
 			glow = maxf(glow, entry[2] * sin((t - at) / span * PI))
+	# **번쩍은 깜빡임과 다른 물건이다.** 같은 자로 재면 조금 센 깜빡임일 뿐이라, 등불을 훨씬
+	# 크게 부풀리고 주황 판까지 잠깐 씌워서 눈을 때린다.
+	var strike := 0.0
 	if t >= FLASH_AT and t < FLASH_AT + FLASH_FOR:
-		glow = maxf(glow, sin((t - FLASH_AT) / FLASH_FOR * PI))
+		strike = sin((t - FLASH_AT) / FLASH_FOR * PI)
+	glow = maxf(glow, strike)
 	_lamp.visible = glow > 0.01
 	_lamp.self_modulate = Color(1.0, 1.0, 1.0, glow)
-	_lamp.scale = Vector2.ONE * lerpf(DARK_LAMP * 0.5, DARK_LAMP * 2.4, glow)
+	_lamp.scale = Vector2.ONE * lerpf(DARK_LAMP * 0.5, FLASH_SIZE, pow(strike, 0.6)) \
+		if strike > 0.01 else Vector2.ONE * lerpf(DARK_LAMP * 0.5, DARK_LAMP * 2.4, glow)
+	_flash.color.a = pow(strike, 1.6) * FLASH_GLARE
 
 
 func _place(walking: bool = false) -> void:
@@ -219,7 +236,7 @@ func _place(walking: bool = false) -> void:
 	var eaten: float = smoothstep(DARK_FROM, DARK_TO, _depth)
 	_lamp.scale = Vector2.ONE * lerpf(1.0, DARK_LAMP, eaten)
 	# 구멍이 줄면서 **남은 자리도 같이 흐려진다.** 줄기만 하면 조리개처럼 보인다.
-	_hole(lerpf(OPEN_WIDE, 0.0, eaten), eaten * 0.75)
+	_hole(lerpf(OPEN_WIDE, 0.0, eaten), eaten * 0.92)
 
 	_figure.show_state("north", walking)
 	_lamp.position = _figure.position + _figure.lantern_at() * float(FIGURE_ZOOM)
@@ -262,6 +279,16 @@ func _build() -> void:
 	hole.shader = load(VIGNETTE_SHADER)
 	_shade.material = hole
 	shade_layer.add_child(_shade)
+
+	# 눈이 머는 주황 판. **맨 위**에 있어야 전부 덮는다.
+	var flash_layer := CanvasLayer.new()
+	flash_layer.layer = 70
+	add_child(flash_layer)
+	_flash = ColorRect.new()
+	_flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_flash.color = Color(1.0, 0.78, 0.42, 0.0)
+	flash_layer.add_child(_flash)
 
 	# 등불은 필터 밖이자 맨 위다. 이 화면에서 색을 가진 것은 이것뿐이다.
 	var lamp_layer := CanvasLayer.new()

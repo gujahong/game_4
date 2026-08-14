@@ -39,5 +39,12 @@ void fragment() {
 		+ atan(away.y, away.x) * 3.0);
 	float push = (first * 0.65 + second * 0.35) * amplitude * grow;
 
-	COLOR = texture(TEXTURE, UV + out_dir * push * texel);
+	// **그림 밖을 읽으면 네모난 자국이 생긴다.** 밀린 좌표가 경계를 넘으면 반대쪽 끝이
+	// 딸려오거나 가장자리 픽셀이 죽 늘어나서 덩어리로 뭉친다. 밖은 그냥 비워 둔다.
+	vec2 at = UV + out_dir * push * texel;
+	if (at.x < 0.0 || at.x > 1.0 || at.y < 0.0 || at.y > 1.0) {
+		COLOR = vec4(0.0);
+	} else {
+		COLOR = texture(TEXTURE, at);
+	}
 }
