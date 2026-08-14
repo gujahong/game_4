@@ -27,6 +27,9 @@ const TOLERANCE := 0.44
 ## **검은 화면에 올려놓고 보니 그게 오로라처럼 읽혔다.** 잘라낸 것이 오히려 분위기였다.
 const RADIUS := 0.5
 
+## 사방에 두를 투명 여백(픽셀). 일렁임이 미는 폭(26)보다 넉넉해야 안 잘린다.
+const PAD := 72
+
 
 func _init() -> void:
 	var image := Image.load_from_file(SOURCE)
@@ -80,6 +83,12 @@ func _init() -> void:
 				continue
 			image.set_pixel(x, y, Color(0, 0, 0, 0))
 			wiped += 1
+
+	# **투명 여백을 두른다.** 일렁임(`AuraRipple`)이 픽셀을 바깥으로 미는데 그림이 여기서
+	# 끝나면 밀려난 자리가 경계에서 잘려 **사각형 자국**이 된다. 미는 폭보다 넉넉히 남긴다.
+	var roomy := Image.create_empty(w + PAD * 2, h + PAD * 2, false, Image.FORMAT_RGBA8)
+	roomy.blit_rect(image, Rect2i(Vector2i.ZERO, image.get_size()), Vector2i(PAD, PAD))
+	image = roomy
 
 	image.save_png(OUTPUT)
 	print("배경 %d칸을 지웠다 (전체의 %.0f%%)" % [wiped, 100.0 * float(wiped) / float(w * h)])

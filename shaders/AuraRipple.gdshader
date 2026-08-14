@@ -19,6 +19,10 @@ uniform float speed : hint_range(0.0, 8.0) = 1.6;
 // 흔들리는 것으로 보인다. 0.42면 바깥 8분의 1쯤에서만 일렁인다.
 uniform float calm_radius : hint_range(0.0, 0.5) = 0.42;
 
+// 그림에서 **주제가 끝나는 반지름.** 투명 여백을 두르면 주제가 그림 끝(0.5)까지 안 가므로,
+// 이 값을 안 줄이면 일렁이는 구간이 통째로 여백으로 밀려나 아무것도 안 흔들린다.
+uniform float edge_radius : hint_range(0.05, 0.5) = 0.5;
+
 void fragment() {
 	vec2 texel = TEXTURE_PIXEL_SIZE;
 	vec2 away = UV - vec2(0.5);
@@ -26,7 +30,7 @@ void fragment() {
 	vec2 out_dir = away / r;
 
 	// 가운데는 멎고 가장자리로 갈수록 세진다.
-	float grow = smoothstep(calm_radius, 0.5, r);
+	float grow = smoothstep(calm_radius, edge_radius, r);
 
 	// **물결을 둘 겹친다.** 하나만 쓰면 고른 사인파라 얌전하고 기계 같다. 주기가 서로 안
 	// 맞는 둘을 겹치면 마루가 만났다 어긋났다 하면서 불규칙하게 꿈틀거린다 - 살아 있는데

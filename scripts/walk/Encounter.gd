@@ -65,7 +65,7 @@ const PAPERS := 16       ## 허공에 떠다니는 종이
 ## 0.085(12초) → 0.045(22초) → 0.037(27초)로 늘렸다가 **되돌렸다.** 뒤쪽이 어두워지면
 ## 화면이 거의 안 바뀌어서, 걸음이 길면 회원님 말씀대로 **멈춘 줄 알게 된다.**
 ## 도착까지 빠르게 가고 그 대신 암전으로 사이를 둔다.
-const WALK_SPEED := 0.058
+const WALK_SPEED := 0.038
 
 ## 그것의 크기(화면 높이에 대한 비율).
 ##
@@ -79,8 +79,8 @@ const TARGET_NEAR := 2.1
 
 ## 그것의 숨과 회전. **살아 있는지 아닌지 알 수 없을 만큼 느리게.**
 ## 한 바퀴 도는 데 100초쯤 걸린다.
-const BREATH := 10.0
-const BREATH_SPEED := 0.35
+const BREATH := 26.0
+const BREATH_SPEED := 0.42
 const SPIN_SPEED := 0.062
 
 ## 가장자리의 기운을 바깥으로 퍼지게 하는 셰이더.
@@ -102,7 +102,16 @@ var _burst: _Burst
 ## 들어와도 "이미 본 것"이 다시 밝아질 뿐이다. 절반쯤 왔을 때 이미 안 보여야 마지막 순간이
 ## 놀랍다.
 const DARK_FROM := 0.22
-const DARK_TO := 0.78
+const DARK_TO := 0.62
+
+## 다 어두워진 뒤의 걸음 배속. **캄캄한 채로 오래 걸으면 화면이 안 바뀌어서 버그로 느낀다.**
+## 그 구간을 빨리 지나가고, 대신 앞쪽을 느리게 걷는다(`WALK_SPEED`).
+const DARK_PACE := 4.0
+
+## 이만큼 걸으면 **그것이 직접 다가오기 시작한다.** 그 뒤로는 멈춰도 거리가 줄어든다 -
+## 걸음이 갑자기 빨라지는 것이 "저것이 오고 있다"로 읽혀서, 아예 그렇게 만든 것이다.
+const SEIZE_AT := 8.0
+const SEIZE_PACE := 2.6
 const DARK_LAMP := 0.22   ## 다 먹혔을 때 등불이 눌린 크기
 
 ## 뚫린 구멍이 다 열렸을 때의 반경. 화면 구석까지 덮으려면 1보다 커야 한다.
@@ -139,6 +148,8 @@ const FLOOD_FOR := 1.6
 ## 한다. 길게 끌면 "빛이 찼다가 → 가라앉고 → 바뀐다"가 되어 전환이 눈에 보인다.
 const HOLD := 0.18
 
+var _walked := 0.0    ## 실제로 걸은 시간(초). 멈춰 있으면 안 는다
+var _seized := false  ## 붙잡혔는가. 그 뒤로는 내가 멈춰도 그것이 다가온다
 var _depth := 0.0   ## 0이면 맨 끝, 1이면 닿음
 var _flow := 0.0    ## 사각 테가 흘러나온 양. 걸을 때만 늘어난다
 var _arrived := -1.0  ## 닿은 뒤 흐른 시간. 음수면 아직 걷는 중이다
@@ -162,9 +173,22 @@ func _process(delta: float) -> void:
 	# 떠 있는 것들은 걸음과 무관하게 흔들리므로 멈춰 있어도 다시 그려야 한다.
 	_lines.queue_redraw()
 	var walking := Input.is_action_pressed("ui_up")
-	if walking:
-		_depth = minf(_depth + WALK_SPEED * delta, 1.0)
-		_flow += WALK_SPEED * delta * float(RUNGS)
+
+	# **어느 순간부터는 그것이 온다.** 8초쯤 걸으면 붙잡힌 것이고, 그 뒤로는 내가 멈춰도
+	# 거리가 줄어든다 - 도망칠 수 없다는 것이 걸음으로 드러난다.
+	if not _seized:
+		if walking:
+			_walked += delta
+		if _walked >= SEIZE_AT:
+			_seized = true
+
+	if walking or _seized:
+		# 캄캄해진 뒤로는 빨리 지나간다. 앞쪽은 그만큼 느리게 걷는다.
+		var pace: float = WALK_SPEED * (DARK_PACE if _depth >= DARK_TO else 1.0)
+		if _seized:
+			pace = maxf(pace, WALK_SPEED * SEIZE_PACE)
+		_depth = minf(_depth + pace * delta, 1.0)
+		_flow += pace * delta * float(RUNGS)
 	_place(walking)
 	if _depth >= 1.0:
 		_arrived = 0.0
@@ -244,7 +268,11 @@ func _blink(t: float) -> void:
 
 
 func _place(walking: bool = false) -> void:
-	var grow: float = lerpf(TARGET_FAR, TARGET_NEAR, pow(_depth, 2.4))
+	# **캄캄해지면 몰래 끝 크기로 당겨 놓는다.** 아무도 못 보는 사이라 공짜이고, 불이
+	# 들어오는 순간 이미 이만큼 커져 있어야 "왜 이렇게 커"가 나온다.
+	var eaten_now: float = smoothstep(DARK_FROM, DARK_TO, _depth)
+	var grow: float = lerpf(TARGET_FAR, TARGET_NEAR,
+		maxf(pow(_depth, 2.4), eaten_now))
 	if _target.texture != null:
 		var scale_now: float = SCREEN.y * grow / float(_target.texture.get_size().y)
 		_target.scale = Vector2(scale_now, scale_now)
@@ -291,8 +319,13 @@ func _build() -> void:
 	# 가장자리에서 기운이 바깥으로 퍼진다. **세로로 미는 `PortalWave`는 원형에 안 맞았다** -
 	# 폭을 2에서 16까지 올려도 "일렁인다"가 아니라 "그림이 흔들린다"로 보였다.
 	# 반지름 방향으로 밀어야 뿜어져 나오는 것이 된다.
+	# 그림에 투명 여백을 둘렀으므로(`tools/_cutbg.gd`의 `PAD`) 주제가 끝나는 자리를 알려준다.
+	# 안 주면 일렁이는 구간이 여백으로 밀려나 아무것도 안 흔들린다.
 	var wave := ShaderMaterial.new()
 	wave.shader = load(AURA_SHADER)
+	var content: float = 0.5 * 512.0 / 656.0   # 원본 512가 656 안에 들어 있다
+	wave.set_shader_parameter("edge_radius", content)
+	wave.set_shader_parameter("calm_radius", content * 0.84)
 	_target.material = wave
 	_target.z_index = 1
 	add_child(_target)

@@ -81,3 +81,19 @@ func flicker(cycles: int, interval: float, dark_alpha: float = 0.7, color: Color
 		_rect.color = Color(color.r, color.g, color.b, 0.0)
 		await get_tree().create_timer(interval).timeout
 	_rect.color = Color(color.r, color.g, color.b, dark_alpha)
+
+
+## 어느 씬에서나 듣는 키 둘. **자동 로드라 여기 두면 씬마다 안 넣어도 된다.**
+##
+## Godot은 Esc에 아무것도 안 걸어둔다 — 창을 끄려면 Alt+F4밖에 없어서 확인할 때마다 번거로웠다.
+func _unhandled_input(event: InputEvent) -> void:
+	if not event is InputEventKey or not event.is_pressed() or event.is_echo():
+		return
+	match (event as InputEventKey).keycode:
+		KEY_ESCAPE:
+			get_tree().quit()
+		KEY_F11:
+			var full: bool = (DisplayServer.window_get_mode()
+				== DisplayServer.WINDOW_MODE_FULLSCREEN)
+			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if full
+				else DisplayServer.WINDOW_MODE_FULLSCREEN)
