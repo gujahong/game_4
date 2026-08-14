@@ -8,7 +8,7 @@
 shader_type canvas_item;
 
 // 밀어내는 폭(픽셀). 가장자리에서 이만큼이고 안쪽으로 갈수록 줄어든다.
-uniform float amplitude : hint_range(0.0, 64.0) = 14.0;
+uniform float amplitude : hint_range(0.0, 64.0) = 26.0;
 // 물결 하나의 길이(픽셀).
 uniform float wavelength : hint_range(4.0, 512.0) = 80.0;
 // 퍼져 나가는 속도.
@@ -28,9 +28,16 @@ void fragment() {
 	// 가운데는 멎고 가장자리로 갈수록 세진다.
 	float grow = smoothstep(calm_radius, 0.5, r);
 
+	// **물결을 둘 겹친다.** 하나만 쓰면 고른 사인파라 얌전하고 기계 같다. 주기가 서로 안
+	// 맞는 둘을 겹치면 마루가 만났다 어긋났다 하면서 불규칙하게 꿈틀거린다 - 살아 있는데
+	// 짐승은 아닌 것으로 읽힌다.
+	//
 	// 시간을 빼야 마루가 바깥으로 나가는 방향으로 흐른다.
-	float phase = (r / texel.x) / wavelength * 6.28318 - TIME * speed;
-	float push = sin(phase) * amplitude * grow;
+	float px = r / texel.x;
+	float first = sin(px / wavelength * 6.28318 - TIME * speed);
+	float second = sin(px / (wavelength * 0.37) * 6.28318 - TIME * speed * 1.63
+		+ atan(away.y, away.x) * 3.0);
+	float push = (first * 0.65 + second * 0.35) * amplitude * grow;
 
 	COLOR = texture(TEXTURE, UV + out_dir * push * texel);
 }

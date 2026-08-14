@@ -7,7 +7,9 @@ class_name BattleScreen
 ## 밝기가 바뀌면 배경과 적이 같이 색을 잃고 같이 어두워지고, **메뉴의 빛줄기까지 함께 흐려진다.**
 ## 그래서 남은 기름을 나타내는 눈금이 따로 필요 없다 - 화면이 곧 게이지다.
 
-const ENEMY_PATH := "res://resources/hollow_armour.tres"
+## 첫 조우 상대는 **아카식 서고를 지키는 것**이다(2026-08-13). 속 빈 갑옷은
+## `resources/hollow_armour.tres`에 그대로 있으니 여기 한 줄만 되돌리면 된다.
+const ENEMY_PATH := "res://resources/watcher.tres"
 
 const ENEMY_POSITION := Vector2(480, 176)
 const LAMP_POSITION := Vector2(480, 444)  ## 빛줄기가 뻗어나오는 자리와 같다

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EnemyDef" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/battle/EnemyDef.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/enemies/watcher.png" id="2"]
+
+[resource]
+script = ExtResource("1")
+display_name = "지켜보는 것"
+texture = ExtResource("2")
+max_hp = 44
+damage_min = 6
+damage_max = 9
+heavy_damage = 18
+heavy_chance = 0.25
+telegraph_line = "고리가 한 칸 돌아간다. 눈들이 일제히 이쪽을 향한다."
+talk_lines = Array[String](["\"나는 결사의 수호자다.\" 눈꺼풀 하나 깜빡이지 않는다.", "고리에 적힌 글자가 읽는 사이에 다른 글자로 바뀐다.", "\"여기 적힌 것 중에 내 이름도 있나.\""])
+talk_needs_light = true
+talk_success_line = "고리가 천천히 멎는다. 눈들이 하나씩 감기고, 길이 열린다."
+talk_fail_line = "눈들이 그대로다. 어둠 속에서는 무엇을 물어도 읽히지 않는다."

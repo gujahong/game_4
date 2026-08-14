@@ -60,8 +60,10 @@ const PAPERS := 16       ## 허공에 떠다니는 종이
 
 ## 걷는 속도(깊이 0~1 기준). **아무 일도 안 일어나는 시간이 외로움을 만든다.**
 ##
-## 0.085(12초)로 잡았더니 빨랐다. 0.045면 22초쯤 걸린다 - 그것에 닿기까지 한참이다.
-const WALK_SPEED := 0.045
+## 0.085(12초) → 0.045(22초) → 0.037(27초)로 늘렸다가 **되돌렸다.** 뒤쪽이 어두워지면
+## 화면이 거의 안 바뀌어서, 걸음이 길면 회원님 말씀대로 **멈춘 줄 알게 된다.**
+## 도착까지 빠르게 가고 그 대신 암전으로 사이를 둔다.
+const WALK_SPEED := 0.058
 
 ## 그것의 크기(화면 높이에 대한 비율).
 ##
@@ -69,7 +71,9 @@ const WALK_SPEED := 0.045
 ## 처음부터 거기 그만큼 크게 있었고 내가 다가갈 뿐이다. 조우 연출을 만들 때 세운 규칙
 ## (*"그것은 안 움직이고, 내가 작아진다"*)과 같은 말이다.
 const TARGET_FAR := 0.45
-const TARGET_NEAR := 0.95
+## **끝에는 화면을 넘어간다.** 1보다 크면 위아래가 화면 밖으로 나가서 다 안 보이게 된다 -
+## 안 보이는 것이 무섭고, 화면 안에 얌전히 들어오면 그냥 큰 그림이다.
+const TARGET_NEAR := 2.1
 
 ## 그것의 숨과 회전. **살아 있는지 아닌지 알 수 없을 만큼 느리게.**
 ## 한 바퀴 도는 데 100초쯤 걸린다.
@@ -79,14 +83,45 @@ const SPIN_SPEED := 0.062
 
 ## 가장자리의 기운을 바깥으로 퍼지게 하는 셰이더.
 const AURA_SHADER := "res://shaders/AuraRipple.gdshader"
+## 등불 자리에 구멍을 뚫어놓고 화면을 덮는 판.
+const VIGNETTE_SHADER := "res://shaders/Vignette.gdshader"
 
 var _lines: Node2D
 var _target: Sprite2D
 var _figure: HeroSprite
 var _lamp: LampGlow
+var _shade: ColorRect
+
+## 어둠이 먹어드는 구간(깊이). **시간이 아니라 거리에 물린다** - 멈추면 어두워지는 것도
+## 멎어야 한다(회원님). 컷신이 아니라 내가 다가가서 벌어지는 일이다.
+const DARK_FROM := 0.45
+const DARK_TO := 1.0
+const DARK_LAMP := 0.22   ## 다 먹혔을 때 등불이 눌린 크기
+
+## 뚫린 구멍이 다 열렸을 때의 반경. 화면 구석까지 덮으려면 1보다 커야 한다.
+const OPEN_WIDE := 1.7
+
+## 닿은 뒤: 잠깐의 암전, 그리고 등불부터 빛이 들어오는 시간.
+##
+## **암전을 짧게 둔다.** 길면 회원님 말씀대로 멈춘 줄 알고 키를 놓게 된다 - 연출이 아니라
+## 고장으로 읽힌다. 대신 **가장 어두운 자리를 지나야 다음 빛이 밝다**.
+## 닿은 뒤의 시간표(초). **깜빡… 깜빡… 번쩍! 화아악!**
+##
+## 등불이 한 번에 팟 켜지면 그냥 조명이 들어온 것이다. 두 번 힘없이 깜빡이고, 사이에 어둠을
+## 두고, 그 다음 번쩍해야 **되살아나는 것**으로 읽힌다.
+const BLINKS := [
+	[3.25, 0.20, 0.30],   # [시각, 길이, 세기]
+	[4.15, 0.16, 0.42],
+]
+const FLASH_AT := 5.05
+const FLASH_FOR := 0.32
+const OPEN_AT := 5.35   ## 조리개가 열리기 시작하는 시각. 앞의 3초는 완전한 암전이다
+const OPEN_FOR := 2.0
+const FLOOD_FOR := 0.9  ## 주황빛이 화면을 삼키는 시간
 
 var _depth := 0.0   ## 0이면 맨 끝, 1이면 닿음
 var _flow := 0.0    ## 사각 테가 흘러나온 양. 걸을 때만 늘어난다
+var _arrived := -1.0  ## 닿은 뒤 흐른 시간. 음수면 아직 걷는 중이다
 
 
 func _ready() -> void:
@@ -95,8 +130,13 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if _depth >= 1.0:
+	if _arrived >= 0.0:
+		_arrived += delta
+		_close_in()
+		if _arrived >= OPEN_AT + OPEN_FOR + FLOOD_FOR:
+			get_tree().change_scene_to_file(BATTLE_SCENE)
 		return
+
 	# 떠 있는 것들은 걸음과 무관하게 흔들리므로 멈춰 있어도 다시 그려야 한다.
 	_lines.queue_redraw()
 	var walking := Input.is_action_pressed("ui_up")
@@ -105,7 +145,55 @@ func _process(delta: float) -> void:
 		_flow += WALK_SPEED * delta * float(RUNGS)
 	_place(walking)
 	if _depth >= 1.0:
-		get_tree().change_scene_to_file(BATTLE_SCENE)
+		_arrived = 0.0
+
+
+## 등불 자리에 뚫린 구멍의 반경을 정한다. 0이면 완전한 암전이다.
+func _hole(radius: float, dim: float = 0.0) -> void:
+	_shade.material.set_shader_parameter("radius", maxf(radius, 0.0))
+	_shade.material.set_shader_parameter("dim", clampf(dim, 0.0, 1.0))
+	_shade.material.set_shader_parameter("light_position", _lamp.position / SCREEN)
+
+
+## 닿은 뒤. **암전 → 잠깐 사이 → 등불부터 빛이 들어오며 세상이 드러남 → 전투.**
+##
+## 이 순간만 시간에 물린다. 어둠이 먹어드는 것은 걸어야 진행되지만(`_place`), 여기서부터는
+## 이미 벌어진 일이라 내가 멈춘다고 멎지 않는다.
+func _close_in() -> void:
+	# 조리개가 열리기 전까지는 **완전한 암전**이다. 등불까지 꺼서 볼 것이 하나도 없다.
+	if _arrived < OPEN_AT:
+		_hole(0.0)
+		_blink(_arrived)
+		return
+
+	# 번쩍한 그 자리에서 조리개가 열린다. **빛 그림이 커지는 게 아니라 그 반경 안이 진짜로
+	# 보인다.** 앞이 느리고 끝이 급한 곡선이라야 "확" 열린다.
+	var open: float = clampf((_arrived - OPEN_AT) / OPEN_FOR, 0.0, 1.0)
+	_lamp.visible = true
+	_lamp.self_modulate = Color(1.0, 1.0, 1.0, 1.0)
+	_hole(pow(open, 2.4) * OPEN_WIDE, (1.0 - open) * 0.75)
+	_lamp.scale = Vector2.ONE * lerpf(DARK_LAMP * 2.4, 7.0, pow(open, 2.0))
+
+	# 다 열린 뒤에는 주황빛이 화면을 삼킨다. 아무것도 안 보이는 채로 전투로 넘어간다.
+	if open >= 1.0:
+		var flood: float = clampf((_arrived - OPEN_AT - OPEN_FOR) / FLOOD_FOR, 0.0, 1.0)
+		_lamp.scale = Vector2.ONE * lerpf(7.0, 64.0, pow(flood, 1.5))
+
+
+## 암전 속에서 등불이 깜빡이다 번쩍한다. 켜졌다 꺼지는 것을 사인 한 마루로 만든다 -
+## 네모나게 켜면 조명 스위치가 되고, 부드럽게 들고 나야 불이 붙으려다 만 것으로 읽힌다.
+func _blink(t: float) -> void:
+	var glow := 0.0
+	for entry in BLINKS:
+		var at: float = entry[0]
+		var span: float = entry[1]
+		if t >= at and t < at + span:
+			glow = maxf(glow, entry[2] * sin((t - at) / span * PI))
+	if t >= FLASH_AT and t < FLASH_AT + FLASH_FOR:
+		glow = maxf(glow, sin((t - FLASH_AT) / FLASH_FOR * PI))
+	_lamp.visible = glow > 0.01
+	_lamp.self_modulate = Color(1.0, 1.0, 1.0, glow)
+	_lamp.scale = Vector2.ONE * lerpf(DARK_LAMP * 0.5, DARK_LAMP * 2.4, glow)
 
 
 func _place(walking: bool = false) -> void:
@@ -118,6 +206,21 @@ func _place(walking: bool = false) -> void:
 	var now: float = float(Time.get_ticks_msec()) * 0.001
 	_target.position = VANISH + Vector2(0.0, sin(now * BREATH_SPEED) * BREATH)
 	_target.rotation = now * SPIN_SPEED
+	# **다가갈수록 세상이 걷힌다.** 바닥·책장·천장이 흐려져서 끝에는 그것과 내 등불만 남는다.
+	# 끝까지 복도가 그대로면 "도착했다"가 눈에 안 보인다.
+	#
+	# 선을 그리는 판 전체에 한 번에 거는 것이라 그리는 쪽은 이걸 몰라도 된다.
+	_lines.modulate.a = 1.0 - smoothstep(0.35, 0.92, _depth)
+
+	# 다가갈수록 어둠이 먹어든다. **등불까지 눌린다** - 그래야 닿는 순간 그 자리에서
+	# 불이 되살아나는 것으로 읽힌다. 걸음에 물려 있으므로 멈추면 이것도 멎는다.
+	# **등불 쪽만 남기고 어둠이 조여든다.** 통짜 검은 판을 알파로 여닫으면 화면이 흐려질 뿐이라
+	# 세상이 안 사라진다. 구멍의 반경을 줄여야 바깥부터 먹히고 등불 쪽만 남는다.
+	var eaten: float = smoothstep(DARK_FROM, DARK_TO, _depth)
+	_lamp.scale = Vector2.ONE * lerpf(1.0, DARK_LAMP, eaten)
+	# 구멍이 줄면서 **남은 자리도 같이 흐려진다.** 줄기만 하면 조리개처럼 보인다.
+	_hole(lerpf(OPEN_WIDE, 0.0, eaten), eaten * 0.75)
+
 	_figure.show_state("north", walking)
 	_lamp.position = _figure.position + _figure.lantern_at() * float(FIGURE_ZOOM)
 	_lines.queue_redraw()
@@ -148,12 +251,25 @@ func _build() -> void:
 	_figure.z_index = 2
 	add_child(_figure)
 
+	# 화면을 덮는 검은 판. **등불보다 아래**에 둬서, 다 덮이고 나면 등불만 남게 한다.
+	var shade_layer := CanvasLayer.new()
+	shade_layer.layer = 50
+	add_child(shade_layer)
+	_shade = ColorRect.new()
+	_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var hole := ShaderMaterial.new()
+	hole.shader = load(VIGNETTE_SHADER)
+	_shade.material = hole
+	shade_layer.add_child(_shade)
+
 	# 등불은 필터 밖이자 맨 위다. 이 화면에서 색을 가진 것은 이것뿐이다.
 	var lamp_layer := CanvasLayer.new()
 	lamp_layer.layer = 60
 	add_child(lamp_layer)
 	_lamp = LampGlow.new()
-	_lamp.glow_size = 160
+	# 이 화면에는 등불 말고 색이 없어서, 맵보다 크고 촘촘해도 된다.
+	_lamp.glow_size = 224
 	lamp_layer.add_child(_lamp)
 
 
@@ -166,6 +282,24 @@ class _Lines extends Node2D:
 	const BOOK_WIDE := 3.0    ## 책 한 권의 폭(픽셀). 이보다 좁아지면 안 그린다
 	const BOOK_LOW := 0.45    ## 칸 높이에 대한 가장 낮은 책
 	const BOOK_HIGH := 0.92
+
+	## 네 귀퉁이로 둘러싸인 면을 빗금으로 채운다. `a`-`b`가 아랫변, `d`-`c`가 윗변이다.
+	##
+	## **면을 따라 보간해서 긋는다.** 화면에서 곧게 그으면 원근이 무너진다 - 빗금도 면 위에
+	## 놓인 선이라 소실점 쪽으로 좁아져야 한다.
+	const HATCH := 7
+	const HATCH_SKEW := 0.42   ## 윗변에서 얼마나 밀지. 0이면 세로줄이라 빗금이 아니다
+
+	func _hatch(a: Vector2, b: Vector2, c: Vector2, d: Vector2, colour: Color) -> void:
+		if a.distance_to(b) < 6.0:
+			return   # 멀어서 뭉갤 자리에는 안 긋는다
+		for i in HATCH:
+			var t: float = (float(i) + 0.5) / float(HATCH)
+			var up: float = t - HATCH_SKEW
+			if up < 0.0 or up > 1.0:
+				continue
+			draw_line(a.lerp(b, t), d.lerp(c, up), colour, 1.0)
+
 
 	## 허공에 뜬 정육면체. 앞면·뒷면과 그 사이를 잇는 모서리 넷을 그린다.
 	## **잇는 모서리가 소실점으로 모이는 것**이 정육면체로 보이게 하는 전부다.
@@ -280,6 +414,13 @@ class _Lines extends Node2D:
 					_post(vanish, deep, xo, tall, dn), _post(vanish, deep, xi, tall, dn),
 					_post(vanish, deep, xi, 0.0, dn),
 				] as PackedVector2Array, Color(1, 1, 1, lit), 1.0)
+
+				# 옆면은 복도 안쪽을 향해 그늘진 면이다. **빗금으로 어둠을 표현한다** -
+				# 선으로만 그리는 그림에서 면을 어둡게 하는 방법은 이것뿐이다.
+				_hatch(
+					_post(vanish, deep, xi, 0.0, dn), _post(vanish, deep, xi, 0.0, df),
+					_post(vanish, deep, xi, tall, df), _post(vanish, deep, xi, tall, dn),
+					Color(1, 1, 1, lit * 0.30))
 
 				# 칸을 나누는 선반. 옆면 위에 놓이므로 이것도 소실점으로 모인다.
 				for row in range(1, Encounter.SHELF_ROWS):
