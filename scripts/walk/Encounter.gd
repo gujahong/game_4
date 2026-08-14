@@ -22,6 +22,8 @@ const TARGET := "res://assets/enemies/watcher.png"
 const FRAMES := "res://assets/characters/pilgrim_rot/pilgrim_frames.tres"
 ## 16x32짜리라 그대로 두면 너무 작다. 정수배로만 키운다.
 const FIGURE_ZOOM := 3
+## 등불을 어깨 너머로 밀어 놓는 양. 머리 위에 그대로 두면 빛이 머리를 뚫고 나와 보인다.
+const LAMP_ASIDE := Vector2(52.0, 22.0)
 
 const SCREEN := Vector2(960, 540)
 ## 소실점 = 지평선. 위쪽 3분의 1쯤에 둔다 - **바닥이 넓게 보여야 서 있는 자리가 잡힌다.**
@@ -96,8 +98,11 @@ var _burst: _Burst
 
 ## 어둠이 먹어드는 구간(깊이). **시간이 아니라 거리에 물린다** - 멈추면 어두워지는 것도
 ## 멎어야 한다(회원님). 컷신이 아니라 내가 다가가서 벌어지는 일이다.
-const DARK_FROM := 0.45
-const DARK_TO := 1.0
+## **일찍 가려야 한다.** 0.45부터 가리면 그것이 다 커진 모습을 이미 본 뒤라, 나중에 불이
+## 들어와도 "이미 본 것"이 다시 밝아질 뿐이다. 절반쯤 왔을 때 이미 안 보여야 마지막 순간이
+## 놀랍다.
+const DARK_FROM := 0.22
+const DARK_TO := 0.78
 const DARK_LAMP := 0.22   ## 다 먹혔을 때 등불이 눌린 크기
 
 ## 뚫린 구멍이 다 열렸을 때의 반경. 화면 구석까지 덮으려면 1보다 커야 한다.
@@ -123,10 +128,9 @@ const FLASH_SIZE := 5.5    ## 번쩍일 때 등불이 부푸는 크기
 const FLASH_GLARE := 0.62  ## 그때 주황 판이 덮는 정도. 눈을 때리는 부분이다
 ## **휙!** 번쩍이 차오른 그 자리에서 조리개가 단숨에 열린다. 이게 "휙"이고,
 ## 그 뒤로 이어지는 것이 "번쩌어어억"이다.
-const OPEN_AT := 6.15
-const SETTLE := 0.35    ## 빛살이 걷히고 화면이 원래대로 돌아오는 시간
-const SLIDE := 1.0      ## 그것과 내가 좌우로 갈라서는 시간
-const SLIDE_BY := 260.0
+const OPEN_AT := 5.55   ## 두 번째 깜빡임이 사그라진 직후. 어둠에서 곧장 빛살이 터진다
+const SETTLE := 0.55    ## 빛살이 걷히고 화면이 원래대로 돌아오는 시간
+const LINGER := 0.9     ## 돌아온 화면을 그대로 두는 시간. 그 뒤에 전투로 넘어간다
 ## **번쩌어어어억.** 주황빛이 차오르고, 다 덮인 채로 한참 버틴다. 여기가 길어야 소리를
 ## 길게 늘여 부른 그 느낌이 난다 - 짧으면 그냥 전환 효과다.
 const BURST_FOR := 1.5  ## 빛살이 두두두 터져 나오는 시간
@@ -151,7 +155,7 @@ func _process(delta: float) -> void:
 		_close_in()
 		# 다 덮인 뒤 잠깐 그대로 둔다. **화면이 주황으로 균일할 때 넘겨야 이음매가 안 보인다** -
 		# 덮이자마자 바꾸면 툭 끊긴 것으로 읽힌다.
-		if _arrived >= OPEN_AT + BURST_FOR + SETTLE + SLIDE:
+		if _arrived >= OPEN_AT + BURST_FOR + SETTLE + LINGER:
 			get_tree().change_scene_to_file(BATTLE_SCENE)
 		return
 
@@ -194,34 +198,26 @@ func _close_in() -> void:
 	_burst.modulate.a = 1.0
 	_burst.queue_redraw()
 
-	# **빛살이 터지는 동안은 여전히 암전이다.** 조리개를 같이 열면 세상이 비쳐서 빛살과
-	# 섞이고, 갈라진 모양이 안 보인다. 검은 화면에 빛살만 두두두 나온다.
+	# **빛살이 터지는 내내 암전이다.** 조리개를 같이 열면 세상이 비쳐서 빛살과 섞이고,
+	# 갈라진 모양이 안 보인다. 검은 화면에 빛살만 두두두 나온다.
 	if burst < 1.0:
 		_hole(0.0)
 		_lamp.visible = false
 		return
 
-	# 다 터지면 **화면이 그대로 돌아온다.** 어둡게 남기지 않는다 - 조여들던 것을 여기서
-	# 통째로 풀어야 "다시 밝은 데로 나왔다"가 된다.
+	# 빛살이 다 채운 뒤 **조각이 걷히면서 화면이 원래대로 돌아온다.** 어둡던 것을 여기서
+	# 통째로 푼다. 그리고 잠시 그대로 두었다가 전투로 넘어간다.
+	# **어둡던 것을 여기서 통째로 푼다.** 조각이 걷히는 동안 화면이 원래대로 돌아오고,
+	# 그대로 잠시 두었다가 전투로 넘어간다.
 	var back: float = clampf((_arrived - OPEN_AT - BURST_FOR) / SETTLE, 0.0, 1.0)
 	_burst.modulate.a = 1.0 - back
+	_hole(OPEN_WIDE, 0.0)
 	_lamp.visible = true
 	_lamp.self_modulate = Color(1.0, 1.0, 1.0, 1.0)
 	_lamp.scale = Vector2.ONE
-	_hole(OPEN_WIDE * back, 0.0)
-	if back < 1.0:
-		return
-
-	# **그것은 왼쪽으로, 나는 오른쪽으로 스윽 갈라선다.** 마주 보던 둘이 옆으로 벌어지면서
-	# 전투 구도가 된다 - 암전으로 끊지 않고 이 자리에서 그대로 넘어간다.
-	var apart: float = clampf((_arrived - OPEN_AT - BURST_FOR - SETTLE) / SLIDE, 0.0, 1.0)
-	var eased: float = 1.0 - pow(1.0 - apart, 3.0)
-	# 전투 화면의 구도와 같은 쪽으로 보낸다 — **그것이 오른쪽, 내가 왼쪽**이다.
-	_target.position.x = VANISH.x + SLIDE_BY * eased
-	_figure.position.x = SCREEN.x * 0.5 - SLIDE_BY * eased
 
 	# 흰 판은 안 쓴다. **깨진 빛살과 같이 쓰니 둘이 섞여 지저분했다** - 갈라진 모양이 판에
-	# 묻혀서 안 보인다. 하나만 남긴다.
+	# 묻혀서 안 보인다. 화면을 채우는 것은 빛살 자체다.
 	_flash.color.a = 0.0
 
 
@@ -238,14 +234,12 @@ func _blink(t: float) -> void:
 	# 크게 부풀리고 주황 판까지 잠깐 씌워서 눈을 때린다.
 	# **올라가서 머문다.** 사인 한 마루로 하면 들어왔다 바로 빠져서 "번쩍"이 되는데,
 	# 올라간 채로 버텨야 "번쩌어어어억"이 된다. 그 상태에서 조리개가 열려 나간다.
-	var strike := 0.0
-	if t >= FLASH_AT:
-		strike = smoothstep(0.0, FLASH_RISE, t - FLASH_AT)
-	glow = maxf(glow, strike)
+	# **부풀어 오르는 번쩍은 뺐다**(회원님). 빛이 먼저 퍼지고 나서 빛살이 나오면 빛이 두 번
+	# 나는 것이다. 빛살은 어둠에서 곧장 터져야 알이 깨지는 것으로 읽힌다 - 여기서는
+	# 힘없이 두 번 깜빡이고 마는 것까지다.
 	_lamp.visible = glow > 0.01
 	_lamp.self_modulate = Color(1.0, 1.0, 1.0, glow)
-	_lamp.scale = Vector2.ONE * lerpf(DARK_LAMP * 0.5, FLASH_SIZE, pow(strike, 0.6)) \
-		if strike > 0.01 else Vector2.ONE * lerpf(DARK_LAMP * 0.5, DARK_LAMP * 2.4, glow)
+	_lamp.scale = Vector2.ONE * lerpf(DARK_LAMP * 0.5, DARK_LAMP * 2.4, glow)
 	_flash.color.a = 0.0
 
 
@@ -270,11 +264,19 @@ func _place(walking: bool = false) -> void:
 	# **등불 쪽만 남기고 어둠이 조여든다.** 통짜 검은 판을 알파로 여닫으면 화면이 흐려질 뿐이라
 	# 세상이 안 사라진다. 구멍의 반경을 줄여야 바깥부터 먹히고 등불 쪽만 남는다.
 	var eaten: float = smoothstep(DARK_FROM, DARK_TO, _depth)
-	_lamp.scale = Vector2.ONE * lerpf(1.0, DARK_LAMP, eaten)
+	# **등불은 걷는 내내 그대로다.** 어둠이 조여드는 것과 같이 줄이면 다가갈수록 내 불이
+	# 작아져서 이상하다. 닿기 직전에만 스르르 눌린다.
+	_lamp.scale = Vector2.ONE * lerpf(1.0, DARK_LAMP, smoothstep(0.80, 1.0, _depth))
 	# 구멍이 줄면서 **남은 자리도 같이 흐려진다.** 줄기만 하면 조리개처럼 보인다.
 	_hole(lerpf(OPEN_WIDE, 0.0, eaten), eaten * 0.92)
 
 	_figure.show_state("north", walking)
+	# 등불을 오른쪽으로 비켜 놓는다. **뒷모습에서는 등불이 앞(=위)에 뜨는데, 그대로 두면
+	# 빛이 머리를 뚫고 나오는 것처럼 보인다.** 어깨 너머로 밀어야 옆에 띄우고 가는 것으로
+	# 읽힌다. **등불 그림과 빛을 같은 값으로 민다** - 따로 두면 빛만 옆에서 새는 꼴이 된다.
+	# `lantern_at()`이 이미 `aside`를 더해서 돌려준다. 여기서 또 더하면 **빛만 두 번 밀려서**
+	# 등불 통과 어긋난다.
+	_figure.aside = LAMP_ASIDE / float(FIGURE_ZOOM)
 	_lamp.position = _figure.position + _figure.lantern_at() * float(FIGURE_ZOOM)
 	_lines.queue_redraw()
 
@@ -339,6 +341,10 @@ func _build() -> void:
 	_lamp = LampGlow.new()
 	# 이 화면에는 등불 말고 색이 없어서, 맵보다 크고 촘촘해도 된다.
 	_lamp.glow_size = 224
+	# **이 화면의 등불은 흰빛이다.** 주황이면 빛살(흰색)과 나란히 놓였을 때 둘이 다른 빛으로
+	# 보인다. 같은 빛에서 나온 것이라야 갈라져 터지는 것이 말이 된다.
+	_lamp.core_color = Color(1.0, 0.93, 0.78, 0.95)
+	_lamp.edge_color = Color(1.0, 0.80, 0.52, 0.0)
 	lamp_layer.add_child(_lamp)
 
 
@@ -351,8 +357,15 @@ class _Burst extends Node2D:
 	## 폭죽이나 햇살 무늬가 된다. 껍질이 갈라진 자리는 크기도 각도도 제멋대로다.
 	const RAYS := 9
 	const REACH := 1800.0   ## 다 뻗었을 때의 길이. 화면 대각선보다 길어야 구석까지 덮는다
-	const WIDE_LOW := 0.20  ## 다 벌어졌을 때의 반각(라디안). 조각마다 이 사이에서 뽑는다
-	const WIDE_HIGH := 0.62
+	## 다 벌어졌을 때의 반각(라디안). 조각마다 이 사이에서 뽑는다.
+	##
+	## **끝에는 살끼리 붙어 화면을 다 채운다.** 조각 아홉이면 간격이 0.70이라 반각이 0.35를
+	## 넘으면 겹치기 시작한다. 넉넉히 넘겨서 마지막엔 틈이 안 남게 한다 - 다 채운 그 순간이
+	## 전환하는 자리다.
+	## **가장 좁은 조각도 간격의 절반(0.35)을 넘어야** 틈이 안 남는다. 0.16으로 뽑힌 것들이
+	## 사이를 못 메워서 검은 쐐기가 남아 있었다.
+	const WIDE_LOW := 0.44
+	const WIDE_HIGH := 0.80
 	const POP := 0.07       ## 조각 하나가 튀어나오는 데 걸리는 몫. 짧아야 "툭"이다
 
 	var centre := Vector2.ZERO
@@ -363,11 +376,15 @@ class _Burst extends Node2D:
 			return
 		for i in RAYS:
 			# 각도도 폭도 번호에서 뽑는다. 무작위로 뽑으면 매 프레임 다시 갈라진다.
-			var jitter: float = fposmod(sin(float(i) * 12.9898) * 43758.5453, 1.0)
+			# 씨앗을 두 번 흔들어야 값이 골고루 흩어진다. 한 번만 돌리면 번호가 이웃한
+			# 조각끼리 값도 이웃해서, 규칙적으로 커졌다 작아지는 무늬가 된다.
+			var jitter: float = fposmod(sin(float(i) * 127.1 + 311.7) * 43758.5453, 1.0)
+			jitter = fposmod(sin(jitter * 269.5 + 183.3) * 43758.5453, 1.0)
 
 			# **한꺼번에 벌어지지 않고 하나씩 튀어나온다 — 툭, 툭, 툭, 두두두두.**
 			# 터지는 시각을 앞은 뜸하게 뒤는 촘촘하게 놓으면 그 박자가 나온다.
-			var at: float = pow(float(i) / float(RAYS), 0.55)
+			# 터지는 시각도 조금씩 어긋나게. 고르면 박자가 기계처럼 들린다.
+			var at: float = pow((float(i) + jitter * 0.8) / float(RAYS), 0.55)
 			var alive: float = clampf((spread - at) / POP, 0.0, 1.0)
 			if alive <= 0.0:
 				continue

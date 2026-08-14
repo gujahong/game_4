@@ -38,6 +38,10 @@ const LANTERN_AT := {
 const FLOAT_HEIGHT := 2.5
 const FLOAT_SPEED := 1.6
 
+## 등불을 기본 자리에서 더 밀어놓고 싶을 때 쓴다(스프라이트 픽셀). 조우 화면에서 뒷모습일 때
+## 등불이 머리에 겹쳐서, 그쪽에서 어깨 너머로 밀어 놓는다.
+var aside := Vector2.ZERO
+
 var _lantern: Sprite2D
 
 
@@ -65,7 +69,7 @@ func _float_lantern(facing: String) -> void:
 	var at: Vector2 = LANTERN_AT.get(facing, Vector2.ZERO)
 	var drift: float = float(Time.get_ticks_msec()) * 0.001 * FLOAT_SPEED
 	at.y += roundf(sin(drift) * FLOAT_HEIGHT)
-	_lantern.position = at
+	_lantern.position = at + aside.round()
 	# 뒤를 보고 갈 때는 등불이 나보다 멀리 있으므로 몸 뒤로 보낸다.
 	_lantern.z_index = -1 if facing == "north" else 1
 
