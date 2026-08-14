@@ -77,8 +77,8 @@ const BREATH := 10.0
 const BREATH_SPEED := 0.35
 const SPIN_SPEED := 0.062
 
-## 오로라를 일렁이게 하는 셰이더. 관문 너머를 흔들 때 쓰던 것을 그대로 쓴다.
-const WAVE_SHADER := "res://shaders/PortalWave.gdshader"
+## 가장자리의 기운을 바깥으로 퍼지게 하는 셰이더.
+const AURA_SHADER := "res://shaders/AuraRipple.gdshader"
 
 var _lines: Node2D
 var _target: Sprite2D
@@ -130,14 +130,11 @@ func _build() -> void:
 	# 그것은 선보다 위에 그린다. 선이 위를 지나가면 그것이 뒤에 있는 것처럼 보인다.
 	_target = Sprite2D.new()
 	_target.texture = load(TARGET)
-	# 오로라가 일렁인다. 폭을 작게 잡아야 고리와 눈은 멎어 있고 바깥의 옅은 테만 흔들린다 -
-	# 크게 주면 그것 전체가 물결쳐서 물속에 잠긴 것처럼 보인다.
+	# 가장자리에서 기운이 바깥으로 퍼진다. **세로로 미는 `PortalWave`는 원형에 안 맞았다** -
+	# 폭을 2에서 16까지 올려도 "일렁인다"가 아니라 "그림이 흔들린다"로 보였다.
+	# 반지름 방향으로 밀어야 뿜어져 나오는 것이 된다.
 	var wave := ShaderMaterial.new()
-	wave.shader = load(WAVE_SHADER)
-	wave.set_shader_parameter("amplitude", 2.0)
-	wave.set_shader_parameter("wavelength", 190.0)
-	wave.set_shader_parameter("speed", 0.35)
-	wave.set_shader_parameter("skew", 0.5)
+	wave.shader = load(AURA_SHADER)
 	_target.material = wave
 	_target.z_index = 1
 	add_child(_target)
