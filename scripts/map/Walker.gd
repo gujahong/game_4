@@ -33,6 +33,7 @@ const ENTER_FADE := 1.6
 @onready var _screen: ColorRect = $FilterLayer/Screen
 
 var _hero: Hero
+var _sleepers: Sleepers
 var _encounter: Vector2
 var _left := false   ## 이미 넘어갔는가. 한 프레임에 두 번 부르지 않으려는 것
 
@@ -50,6 +51,11 @@ func _ready() -> void:
 	# 자리가 보인다. 심연 위에도 떠 있어야 이 방이 끝이 있는 상자가 아니게 된다.
 	$World/Pages.setup(floor_rect.grow(96.0))
 
+	# 바닥에 누워 있는 것들. 다가가면 일어선다.
+	_sleepers = $World/Sleepers
+	_sleepers.setup(_room)
+	_sleepers.woke.connect(_on_woke)
+
 	# 나는 늘 화면 한가운데에 있으므로 화면 필터의 빛은 가운데 고정이면 된다.
 	_screen.material.set_shader_parameter("light_position", Vector2(0.5, 0.5))
 
@@ -63,16 +69,31 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if _left:
+		return
 	_hero.step(Vector2(
 		Input.get_axis("ui_left", "ui_right"),
 		Input.get_axis("ui_up", "ui_down")
 	), delta)
 	_place()
 
+	# 밟으면 부스럭거리다 일어선다.
+	_sleepers.check(_hero.at, delta)
+
 	# 조우 자리에 닿으면 연출로 넘어간다.
-	if not _left and _hero.at.distance_to(_encounter) < ENCOUNTER_RANGE:
+	if _hero.at.distance_to(_encounter) < ENCOUNTER_RANGE:
 		_left = true
 		get_tree().change_scene_to_file(ENCOUNTER_SCENE)
+
+
+## 누워 있던 것이 일어섰다. **긴 연출은 그것한테만 쓴다** - 잡몹마다 15초짜리 암전·빛살을
+## 보여주면 지친다. 여기서는 암전만 짧게 깔고 전투로 넘긴다(회원님이 정한 순서: 암전 →
+## 빛 화악 → 카메라 무빙).
+func _on_woke(_index: int) -> void:
+	_left = true
+	Sfx.play(self, Sfx.SEIZE, -6.0)
+	await ScreenEffect.fade_out(0.45)
+	get_tree().change_scene_to_file(ENCOUNTER_SCENE)
 
 
 ## **정수 픽셀로 끊어** 놓는다. 카메라가 소수점 자리에 있으면 2배로 확대된 화면에서 바닥

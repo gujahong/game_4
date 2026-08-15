@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://scripts/map/HeroSprite.gd" id="5"]
 [ext_resource type="SpriteFrames" path="res://assets/characters/pilgrim_rot/pilgrim_frames.tres" id="6"]
 [ext_resource type="Script" path="res://scripts/map/Pages.gd" id="7"]
+[ext_resource type="Script" path="res://scripts/map/Sleepers.gd" id="8"]
 
 [sub_resource type="ShaderMaterial" id="ScreenFilter"]
 shader = ExtResource("4")
@@ -33,6 +34,9 @@ zoom = Vector2(2, 2)
 
 [node name="Pages" type="Node2D" parent="World"]
 script = ExtResource("7")
+
+[node name="Sleepers" type="Node2D" parent="World"]
+script = ExtResource("8")
 
 [node name="FilterLayer" type="CanvasLayer" parent="."]
 layer = 50

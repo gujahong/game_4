@@ -90,6 +90,22 @@ const RECORDS := [
 ## 서가 앞에 서면 반응하는 거리(칸).
 const RECORD_REACH := 1.8
 
+## ### 종이로 된 것들이 누워 있는 자리
+##
+## **서고 바닥에는 원래 종이가 널려 있다**(`Pages`가 흩날리고 있다). 그래서 어느 더미가
+## 살아 있는지 구별이 안 간다 - 지나가려다 일어서는 것이 이 적의 정체다.
+##
+## 서가로 가는 길목에 둔다. **일부러 밟게 하려는 게 아니라 지나칠 수밖에 없게** 하는 것이라,
+## 서가와 통로 사이 어중간한 자리가 맞다.
+const SLEEPERS := [
+	[0, 1.9],    # 바깥 고리 - 입구에서 서쪽으로 돌면 첫 번째로 만난다
+	[0, -2.4],   # 바깥 고리 - 북서쪽 서가 가는 길
+	[1, 0.9],    # 가운데 고리
+	[2, 2.6],    # 안쪽 고리 - 여기까지 오면 이미 안다
+]
+## 밟았다고 치는 거리(칸). 등불 반경보다 작아야 **보고 나서 피할 수 있다.**
+const SLEEPER_REACH := 1.1
+
 ## ### 중심으로 가는 길은 잠겨 있다 (2026-08-15)
 ##
 ## **서가를 다 읽어야 마지막 통로가 열린다.** 그래야 기록이 장식이 아니라 관문이 된다.
@@ -153,13 +169,7 @@ func entrance_px() -> Vector2:
 
 ## 서가들의 자리(세상 좌표). 칸이 아니라 실제 좌표로 내준다 - 쓰는 쪽이 칸을 몰라도 되게.
 func record_spots_px() -> Array[Vector2]:
-	var out: Array[Vector2] = []
-	var px := float(_tile_px())
-	for spot in RECORDS:
-		var r: float = RINGS[spot[0]]
-		var a: float = spot[1]
-		out.append((_centre + Vector2(cos(a), sin(a)) * r) * px)
-	return out
+	return _ring_spots(RECORDS)
 
 
 ## 이 자리에서 읽을 수 있는 서가가 있는가. 있으면 몇 번째인지, 없으면 -1.
@@ -170,6 +180,31 @@ func record_at(point: Vector2) -> int:
 		if point.distance_to(spots[i]) <= reach:
 			return i
 	return -1
+
+
+## 누워 있는 것들의 자리(세상 좌표).
+func sleeper_spots_px() -> Array[Vector2]:
+	return _ring_spots(SLEEPERS)
+
+
+## 이 자리에서 깨어나는 것이 있는가. 있으면 몇 번째, 없으면 -1.
+func sleeper_at(point: Vector2) -> int:
+	var reach: float = SLEEPER_REACH * float(_tile_px())
+	var spots := sleeper_spots_px()
+	for i in spots.size():
+		if point.distance_to(spots[i]) <= reach:
+			return i
+	return -1
+
+
+## `[고리 번호, 각도]` 목록을 세상 좌표로 푼다. 서가와 적이 같은 방식이라 한 군데로 모은다.
+func _ring_spots(list: Array) -> Array[Vector2]:
+	var out: Array[Vector2] = []
+	var px := float(_tile_px())
+	for spot in list:
+		var a: float = spot[1]
+		out.append((_centre + Vector2(cos(a), sin(a)) * RINGS[spot[0]]) * px)
+	return out
 
 
 func _tile_px() -> int:

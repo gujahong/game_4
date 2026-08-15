@@ -15,6 +15,7 @@ const VOID := Color(0.05, 0.05, 0.07, 1.0)   ## 못 걷는 곳 — 심연
 const WALK := Color(0.55, 0.45, 0.32, 1.0)   ## 걸을 수 있는 곳 — 나무 통로
 const HEART := Color(0.85, 0.30, 0.25, 1.0)  ## 그것과 마주 서는 자리
 const RECORD := Color(0.40, 0.85, 0.55, 1.0) ## 상호작용 — 서가(기록물)
+const SLEEPER := Color(0.95, 0.55, 0.20, 1.0)## 누워 있는 것 — 다가가면 일어선다
 const START := Color(0.35, 0.70, 0.95, 1.0)  ## 들어오는 자리 — 관문
 
 
@@ -43,6 +44,12 @@ func _init() -> void:
 		var at: Vector2 = room._centre + Vector2(cos(a), sin(a)) * room.RINGS[spot[0]]
 		_dot(image, at, RECORD)
 
+	# 누워 있는 것들.
+	for spot in room.SLEEPERS:
+		var a: float = spot[1]
+		var at: Vector2 = room._centre + Vector2(cos(a), sin(a)) * room.RINGS[spot[0]]
+		_dot(image, at, SLEEPER)
+
 	# 들어오는 자리. 여기서 안쪽으로 감겨 들어가야 한다.
 	_dot(image, room._centre + Vector2(0.0, room.RINGS[0]), START)
 
@@ -50,8 +57,12 @@ func _init() -> void:
 	# 유일하게 보이는 방법이다.
 	print("--- 글자 지도 ---")
 	print("  .  못 걷는 곳      #  걸을 수 있는 곳")
-	print("  X  그것            B  서가(읽는 곳)      E  들어오는 자리")
+	print("  X  그것    B  서가    P  누워 있는 것    E  들어오는 자리")
 	var marks := {}
+	for spot in room.SLEEPERS:
+		var a: float = spot[1]
+		var at: Vector2 = room._centre + Vector2(cos(a), sin(a)) * room.RINGS[spot[0]]
+		marks[Vector2i(int(at.x), int(at.y))] = "P"
 	for i in room.RECORDS.size():
 		var a: float = room.RECORDS[i][1]
 		var at: Vector2 = room._centre + Vector2(cos(a), sin(a)) * room.RINGS[room.RECORDS[i][0]]
