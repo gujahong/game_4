@@ -24,11 +24,15 @@ var facing := "south"       ## 바라보는 쪽
 var walking := false
 
 var _bounds: Rect2
+## "여기 설 수 있나?"를 물어보는 곳. **밖에서 받는다** - 이 파일은 방이 사각형인지 나선인지
+## 몰라야 한다. 안 주면 사각형 안이면 다 걸을 수 있는 것으로 친다.
+var _can_stand: Callable
 
 
-func _init(bounds: Rect2) -> void:
+func _init(bounds: Rect2, can_stand := Callable(), start := Vector2.INF) -> void:
 	_bounds = bounds
-	at = bounds.get_center()
+	_can_stand = can_stand
+	at = bounds.get_center() if start == Vector2.INF else start
 
 
 ## 한 프레임 움직인다. `push`는 눌린 방향(-1~1)이고, 대각선은 여기서 하나로 줄어든다.
@@ -39,11 +43,16 @@ func step(push: Vector2, delta: float) -> void:
 		return
 	facing = _name_of(going)
 	var next: Vector2 = at + Vector2(going) * SPEED * delta
-	# 바닥 밖으로는 못 나간다. 벽 충돌을 따로 만들 것 없이 바닥 사각형에 가둔다.
-	at = Vector2(
+	# 방 밖으로는 못 나간다.
+	next = Vector2(
 		clampf(next.x, _bounds.position.x, _bounds.end.x),
 		clampf(next.y, _bounds.position.y, _bounds.end.y)
 	)
+	# **설 수 없는 데면 안 간다.** 심연으로 떨어지지는 않는다 - 떨어지는 게 있으면 죽거나
+	# 되돌리는 규칙이 따로 필요한데, 지금 이 방은 걸어 다니는 곳이지 그런 곳이 아니다.
+	if _can_stand.is_valid() and not _can_stand.call(next):
+		return
+	at = next
 
 
 ## 대각선으로 눌러도 한 방향만 고른다. 가로를 먼저 본다 — 둘 다 눌렸을 때 어느 쪽으로 갈지

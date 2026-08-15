@@ -23,14 +23,44 @@ class_name TilesetRoom
 const SHEET_PATH := "res://assets/tilesets/wood_chasm_image.png"
 const META_PATH := "res://assets/tilesets/wood_chasm_metadata.json"
 
-## 방 크기(칸). 화면 960x540에 32px 타일이면 30x16이 딱 들어간다.
-const COLS := 30
-const ROWS := 16
-## 바깥으로 남기는 공허의 두께(칸).
-const MARGIN := 2
+## ### 서고는 나선이다 (2026-08-14)
+##
+## 전에는 사각형 방 하나였다. 회원님이 주신 참고 그림 셋 — **고리 세계 · 나선 코덱스 ·
+## 떠 있는 서가 탑** — 을 하나로 묶으면 이런 곳이 된다.
+##
+## ```
+## 바깥   최근에 다녀온 꿈. 내가 남긴 기록
+##   ↓
+## 안쪽   더 오래된 것. 누가 썼는지 모르는 것
+##   ↓
+## 중심   그것이 지킨다. 그 너머가 마을 — 포탈 · 기름 · 기록물
+## ```
+##
+## **안으로 갈수록 오래되고 위험해진다.** 그리고 마을이 그것 뒤에 있으므로, 처음 온 사람은
+## 반드시 한 번 마주쳐야 여기가 자기 거점이 된다.
+##
+## 고리 사이는 **한 군데씩만 뚫려 있고 그 자리가 고리마다 돌아간다.** 그래서 곧장 못 들어가고
+## 돌아 걸어야 한다 - 등불이 좁아 한 번에 조금밖에 안 보이는 것과 맞물려 서고가 넓게 느껴진다.
+
+## 방 크기(칸). 나선이라 정사각형이어야 한다. 32px 타일이니 44칸이면 1408px다.
+const COLS := 44
+const ROWS := 44
+
+## 고리들의 반지름(칸). 바깥에서 안으로.
+const RINGS := [19.0, 13.5, 8.5]
+## 통로의 반너비(칸). 1.6이면 세 칸 남짓 - 등불 지름보다 좁아야 벽이 보인다.
+const WALK_HALF := 1.6
+
+## 한가운데 마을의 반지름(칸). 포탈·기름·기록물 세 자리가 들어가야 해서 넓다.
+const HEART := 6.5
+
+## 고리와 고리를 잇는 통로. 각도(라디안)와 반각.
+## **고리마다 자리가 돌아간다.** 같은 자리에 뚫으면 곧장 가로질러 들어가 버린다.
+const SPOKE_TURN := 2.3
+const SPOKE_HALF := 0.13
 
 var _wang_to_atlas: Dictionary = {}  ## wang 번호 -> 아틀라스 좌표
-var _floor: Rect2i                   ## 걸어다닐 수 있는 칸 범위
+var _centre := Vector2(COLS * 0.5, ROWS * 0.5)   ## 나선의 한가운데(칸 좌표)
 
 
 func _ready() -> void:
@@ -38,18 +68,69 @@ func _ready() -> void:
 	if meta.is_empty():
 		return
 	tile_set = _build_tileset(meta)
-	_floor = Rect2i(MARGIN, MARGIN, COLS - MARGIN * 2, ROWS - MARGIN * 2)
 	_paint_room()
 
 
-## 이 칸이 바닥인가(걸을 수 있는가).
+## 이 칸이 바닥인가.
 func is_floor(cell: Vector2i) -> bool:
-	return _floor.has_point(cell)
+	return _walkable(Vector2(cell) + Vector2(0.5, 0.5))
 
 
+## **세상 좌표로 물어보는 것.** Hero가 이걸 쓴다 - 칸이 아니라 실제 발밑 자리로 묻는다.
+func is_walkable_px(point: Vector2) -> bool:
+	return _walkable(point / float(_tile_px()))
+
+
+## 방 전체를 감싸는 사각형. 카메라 한계와 종이 뿌리는 범위로 쓴다.
 func floor_rect_px() -> Rect2:
-	var size: Vector2i = tile_set.tile_size if tile_set else Vector2i(32, 32)
-	return Rect2(Vector2(_floor.position * size), Vector2(_floor.size * size))
+	var px: int = _tile_px()
+	return Rect2(Vector2.ZERO, Vector2(COLS * px, ROWS * px))
+
+
+## 마을 한가운데(세상 좌표). 그것이 지키는 자리이자 포탈·기름·기록물이 놓일 곳이다.
+func heart_px() -> Vector2:
+	return _centre * float(_tile_px())
+
+
+## 바깥 고리 위의 한 자리(세상 좌표). 관문에서 들어온 사람이 여기 선다.
+func entrance_px() -> Vector2:
+	var out: float = RINGS[0]
+	return (_centre + Vector2(0.0, out)) * float(_tile_px())
+
+
+func _tile_px() -> int:
+	return tile_set.tile_size.x if tile_set else 32
+
+
+## ### 나선의 정의
+##
+## 여기 한 곳만 고치면 방 모양이 통째로 바뀐다. 타일도 이동 판정도 전부 이 함수 하나를 본다.
+func _walkable(at: Vector2) -> bool:
+	var offset: Vector2 = at - _centre
+	var d: float = offset.length()
+
+	# 한가운데 마을.
+	if d <= HEART:
+		return true
+
+	# 고리 위.
+	for r in RINGS:
+		if absf(d - r) <= WALK_HALF:
+			return true
+
+	# 고리와 고리 사이를 잇는 통로. **고리마다 한 군데뿐이고 자리가 돌아간다.**
+	var angle: float = offset.angle()
+	var inner: float = HEART
+	for i in RINGS.size():
+		var outer: float = RINGS[RINGS.size() - 1 - i]
+		if d > inner - WALK_HALF and d < outer + WALK_HALF:
+			var spoke: float = float(i) * SPOKE_TURN
+			# 각도는 한 바퀴 돌면 되돌아오므로 차이를 -PI~PI로 접어서 잰다.
+			if absf(wrapf(angle - spoke, -PI, PI)) <= SPOKE_HALF:
+				return true
+		inner = outer
+
+	return false
 
 
 func _read_metadata() -> Dictionary:
@@ -97,10 +178,8 @@ func _paint_room() -> void:
 	for r in ROWS + 1:
 		var row := []
 		for c in COLS + 1:
-			# 꼭짓점이 바닥 영역 안에 있으면 위 지형(대리석), 아니면 아래 지형(공허).
-			var inside := c >= _floor.position.x and c <= _floor.end.x \
-				and r >= _floor.position.y and r <= _floor.end.y
-			row.append(1 if inside else 0)
+			# 꼭짓점이 통로 위에 있으면 위 지형(나무), 아니면 아래 지형(심연).
+			row.append(1 if _walkable(Vector2(c, r)) else 0)
 		vertex.append(row)
 
 	for r in ROWS:

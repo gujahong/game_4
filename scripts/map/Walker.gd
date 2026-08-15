@@ -17,10 +17,12 @@ const EDGE_PADDING := 10.0  ## 벽에 코를 박지 않게 바닥 안쪽으로 �
 ## [2026-08-13] `Walk.tscn`(일러스트 한 장을 채우는 방식)에서 `Encounter.tscn`(검은 화면에
 ## 흰 선만)으로 바꿨다. 옛것은 그대로 남아 있으니 여기 한 줄만 되돌리면 된다.
 const ENCOUNTER_SCENE := "res://scenes/Encounter.tscn"
-## 방 위쪽 가운데다. **조우 화면에서 뒷모습(북쪽)으로 걸어 들어가므로 방에서도 위로
-## 가야 한다** - 오른쪽으로 걷다가 갑자기 위를 향하면 어긋난다.
-const ENCOUNTER_AT := Vector2(0.5, 0.04)
-const ENCOUNTER_RANGE := 20.0
+## **나선의 한가운데다**(2026-08-14). 그것이 마을을 지키고 있고, 그 너머에 포탈·기름·기록물이
+## 있다 - 처음 온 사람은 반드시 한 번 마주쳐야 여기가 자기 거점이 된다.
+##
+## 전에는 방 위쪽 가운데(0.5, 0.04)였다. 조우 화면에서 북쪽으로 걸어 들어가니 방에서도 위로
+## 가야 맞는다고 봤는데, 나선이 되면서 **안쪽으로 감겨 들어가는 것**이 그 자리를 대신한다.
+const ENCOUNTER_RANGE := 28.0
 ## 관문에서 넘어올 때 덮여 있던 암전을 걷는 시간. `Opening.ENTER_FADE`와 맞춘다.
 const ENTER_FADE := 1.6
 
@@ -37,8 +39,11 @@ var _left := false   ## 이미 넘어갔는가. 한 프레임에 두 번 부르�
 
 func _ready() -> void:
 	var floor_rect := _room.floor_rect_px().grow(-EDGE_PADDING)
-	_hero = Hero.new(floor_rect)
-	_encounter = floor_rect.position + floor_rect.size * ENCOUNTER_AT
+	# **통로 위에서만 걷는다.** 방이 사각형이 아니라 나선이라, 판정을 방에게 물어본다 -
+	# `Hero`는 방 모양을 몰라도 된다.
+	_hero = Hero.new(floor_rect, _room.is_walkable_px, _room.entrance_px())
+	# 그것은 나선 한가운데에서 마을을 지킨다.
+	_encounter = _room.heart_px()
 	_place()
 
 	# **종이는 방보다 넓게 흩어져 있다.** 딱 바닥만큼만 두면 가장자리에서 종이가 사라지는
