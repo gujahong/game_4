@@ -33,31 +33,84 @@ const META_PATH := "res://assets/tilesets/wood_chasm_metadata.json"
 ##   ↓
 ## 안쪽   더 오래된 것. 누가 썼는지 모르는 것
 ##   ↓
-## 중심   그것이 지킨다. 그 너머가 마을 — 포탈 · 기름 · 기록물
+## 중심   그것이 있다. 잡으면 포탈이 열리고, 그 너머가 마을이다
 ## ```
 ##
-## **안으로 갈수록 오래되고 위험해진다.** 그리고 마을이 그것 뒤에 있으므로, 처음 온 사람은
-## 반드시 한 번 마주쳐야 여기가 자기 거점이 된다.
+## **중심은 마을이 아니다**(2026-08-15 정정). 마주 서는 자리일 뿐이라 넓을 이유가 없다 -
+## 오히려 좁아야 도망갈 데가 없어 보인다. 마을(포탈·기름·기록물)은 포탈 너머의 계단의 방이다.
 ##
 ## 고리 사이는 **한 군데씩만 뚫려 있고 그 자리가 고리마다 돌아간다.** 그래서 곧장 못 들어가고
 ## 돌아 걸어야 한다 - 등불이 좁아 한 번에 조금밖에 안 보이는 것과 맞물려 서고가 넓게 느껴진다.
+##
+## **다만 마지막 한 걸음만은 북쪽이다.** 마을로 들어가는 통로를 중심의 남쪽에 못 박아뒀다 -
+## 조우 화면이 뒷모습으로 북쪽을 향해 걸어 들어가는 그림이라, 여기서 옆으로 들어가면
+## 넘어가는 순간 방향이 어긋난다(회원님 지적).
 
 ## 방 크기(칸). 나선이라 정사각형이어야 한다. 32px 타일이니 44칸이면 1408px다.
 const COLS := 44
 const ROWS := 44
 
 ## 고리들의 반지름(칸). 바깥에서 안으로.
-const RINGS := [19.0, 13.5, 8.5]
+## 안쪽 고리를 8.5에서 밀었다 - 중심과 틈이 0.4칸뿐이라 사실상 붙어 있어서, 돌아가지 않고
+## 아무 데서나 들어가졌다(2026-08-15).
+const RINGS := [19.0, 14.0, 9.0]
 ## 통로의 반너비(칸). 1.6이면 세 칸 남짓 - 등불 지름보다 좁아야 벽이 보인다.
 const WALK_HALF := 1.6
 
-## 한가운데 마을의 반지름(칸). 포탈·기름·기록물 세 자리가 들어가야 해서 넓다.
-const HEART := 6.5
+## 그것과 마주 서는 자리의 반지름(칸). **좁다** - 마을이 아니라 마주 서는 데다.
+const HEART := 4.5
 
 ## 고리와 고리를 잇는 통로. 각도(라디안)와 반각.
 ## **고리마다 자리가 돌아간다.** 같은 자리에 뚫으면 곧장 가로질러 들어가 버린다.
 const SPOKE_TURN := 2.3
 const SPOKE_HALF := 0.13
+
+## **마지막 통로만 남쪽에 못 박는다.** 여기로 들어가면 반드시 북쪽을 향해 걷게 되고,
+## 그래야 조우 화면(뒷모습으로 북쪽을 향해 걸어 들어감)과 방향이 이어진다.
+## 화면 좌표라 아래가 +y이므로 남쪽이 +PI/2다.
+const LAST_SPOKE := PI * 0.5
+## 마지막 통로는 조금 넓게. 여기만은 헤매게 하지 않는다 - 찾는 재미는 앞의 고리들이 이미 준다.
+const LAST_SPOKE_HALF := 0.30
+
+## ### 상호작용하는 자리
+##
+## 서가다. 고리 위에 놓이고, **다가가서 읽으면 기록이 뜬다.** 첫 안이라 자리는 눈으로 보고
+## 옮기면 된다 - `[고리 번호, 각도]`뿐이라 숫자 두 개다.
+##
+## **통로가 뚫린 자리에서 먼 데** 둔다. 지나는 길에 저절로 밟히면 찾은 것이 아니라 걸린 것이다.
+## 그리고 안쪽 고리일수록 오래된 기록이라, 거기 있는 것이 그것의 이름에 가깝다.
+## 들어오는 자리가 남쪽(각도 +PI/2 = 1.57)이므로 **거기서 멀찍이** 둔다. 처음에 둘이 입구
+## 근처에 몰려 있어서 시작하자마자 밟혔다(2026-08-15).
+const RECORDS := [
+	[0, -1.2],   # 바깥 고리 - 북서쪽. 들어오자마자 반 바퀴 돌아야 한다
+	[0, 0.2],    # 바깥 고리 - 동쪽
+	[1, 3.4],    # 가운데 고리 - 서쪽
+	[2, -0.4],   # 안쪽 고리 - 북동쪽. 제일 오래된 기록
+]
+## 서가 앞에 서면 반응하는 거리(칸).
+const RECORD_REACH := 1.8
+
+## ### 중심으로 가는 길은 잠겨 있다 (2026-08-15)
+##
+## **서가를 다 읽어야 마지막 통로가 열린다.** 그래야 기록이 장식이 아니라 관문이 된다.
+##
+## 그리고 읽으려면 등불이 밝아야 하고, 등불은 기름을 태운다. **알아내는 데 값이 드는 구조**가
+## 여기서 실제 규칙이 된다 - 예전에 적어둔 *"기름을 태워야 알 수 있다"* 그대로다.
+##
+## 잠겨 있는 동안 그 자리는 심연이라 지도에서도 끊겨 보인다. 열리면 이어진다.
+var _opened := false
+
+
+## 서가를 다 읽었다. 중심으로 가는 길이 열린다.
+func open_way() -> void:
+	if _opened:
+		return
+	_opened = true
+	_paint_room()   # 통로가 하나 늘었으니 바닥을 다시 깐다
+
+
+func is_open() -> bool:
+	return _opened
 
 var _wang_to_atlas: Dictionary = {}  ## wang 번호 -> 아틀라스 좌표
 var _centre := Vector2(COLS * 0.5, ROWS * 0.5)   ## 나선의 한가운데(칸 좌표)
@@ -98,6 +151,27 @@ func entrance_px() -> Vector2:
 	return (_centre + Vector2(0.0, out)) * float(_tile_px())
 
 
+## 서가들의 자리(세상 좌표). 칸이 아니라 실제 좌표로 내준다 - 쓰는 쪽이 칸을 몰라도 되게.
+func record_spots_px() -> Array[Vector2]:
+	var out: Array[Vector2] = []
+	var px := float(_tile_px())
+	for spot in RECORDS:
+		var r: float = RINGS[spot[0]]
+		var a: float = spot[1]
+		out.append((_centre + Vector2(cos(a), sin(a)) * r) * px)
+	return out
+
+
+## 이 자리에서 읽을 수 있는 서가가 있는가. 있으면 몇 번째인지, 없으면 -1.
+func record_at(point: Vector2) -> int:
+	var reach: float = RECORD_REACH * float(_tile_px())
+	var spots := record_spots_px()
+	for i in spots.size():
+		if point.distance_to(spots[i]) <= reach:
+			return i
+	return -1
+
+
 func _tile_px() -> int:
 	return tile_set.tile_size.x if tile_set else 32
 
@@ -109,9 +183,10 @@ func _walkable(at: Vector2) -> bool:
 	var offset: Vector2 = at - _centre
 	var d: float = offset.length()
 
-	# 한가운데 마을.
+	# 그것과 마주 서는 자리. **길이 열리기 전에는 여기도 못 간다** - 통로만 막고 안쪽을
+	# 남겨두면 지도에서 섬처럼 떠 보인다.
 	if d <= HEART:
-		return true
+		return _opened
 
 	# 고리 위.
 	for r in RINGS:
@@ -124,9 +199,15 @@ func _walkable(at: Vector2) -> bool:
 	for i in RINGS.size():
 		var outer: float = RINGS[RINGS.size() - 1 - i]
 		if d > inner - WALK_HALF and d < outer + WALK_HALF:
-			var spoke: float = float(i) * SPOKE_TURN
+			# i가 0인 것이 **중심으로 들어가는 마지막 통로**다. 이것만 남쪽에 고정하고,
+			# 서가를 다 읽기 전에는 아예 없다.
+			if i == 0 and not _opened:
+				inner = outer
+				continue
+			var spoke: float = LAST_SPOKE if i == 0 else float(i) * SPOKE_TURN
+			var half: float = LAST_SPOKE_HALF if i == 0 else SPOKE_HALF
 			# 각도는 한 바퀴 돌면 되돌아오므로 차이를 -PI~PI로 접어서 잰다.
-			if absf(wrapf(angle - spoke, -PI, PI)) <= SPOKE_HALF:
+			if absf(wrapf(angle - spoke, -PI, PI)) <= half:
 				return true
 		inner = outer
 
