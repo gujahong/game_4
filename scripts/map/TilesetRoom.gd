@@ -13,8 +13,15 @@ class_name TilesetRoom
 ## metadata의 `bounding_box`가 시트에서 그 타일의 정확한 자리다(`original_position`은 생성 격자라
 ## 쓰면 안 된다 — 안내에 그렇게 적혀 있다).
 
-const SHEET_PATH := "res://assets/tilesets/marble_void_image.png"
-const META_PATH := "res://assets/tilesets/marble_void_metadata.json"
+## **나무 통로 ↔ 심연**(2026-08-14). 전에는 `marble_void`(흰파랑 대리석 + 남색 공허)였는데,
+## 회원님이 주신 서고 참고 그림 — 따뜻한 호박색 나무와 책, 심연 위에 놓인 통로 — 과 안 맞아
+## 새로 뽑았다. 옛 시트도 남아 있으니 이 두 줄만 되돌리면 그대로 쓴다.
+##
+##   tileset 15cddff9-7b91-4781-8815-02417fa8f242
+##   심연     93a487f0-3861-4d3b-b844-9badcb48dd51
+##   나무     a3daef06-de22-4892-ad36-e6be10b9cbb9   ← 다음 타일셋의 lower로 넘기면 이어진다
+const SHEET_PATH := "res://assets/tilesets/wood_chasm_image.png"
+const META_PATH := "res://assets/tilesets/wood_chasm_metadata.json"
 
 ## 방 크기(칸). 화면 960x540에 32px 타일이면 30x16이 딱 들어간다.
 const COLS := 30

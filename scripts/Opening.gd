@@ -84,6 +84,22 @@ const WALK_FROM := 58.0
 const WALK_TO := 796.0
 const WALK_SPEED := 56.0
 
+## 문턱을 넘어 서고로 들어간다 (2026-08-14).
+##
+## **관문은 서고의 입구다**(회원님). 여기를 지나면 아카식 서고 안이고, 서고 안쪽으로 더
+## 들어가면 그것과 마주친다 - `Room` → `Encounter` → 전투로 이어진다.
+##
+## 넘어가는 조건을 **문턱에 닿는 것만으로 두지 않는다.** 걷다가 끝에 부딪히면 실수로도
+## 넘어가 버려서, 관문을 구경할 새가 없다. **문턱에 서서 안쪽으로 한 번 더 걸어 들어가야**
+## 넘어간다 - 들어가겠다는 뜻이 손에 남는다.
+const ARCHIVE_SCENE := "res://scenes/Room.tscn"
+## **너무 깊이 들어가야 했다**(2026-08-14, 회원님). 0.72는 갈 수 있는 데까지 거의 다 가야
+## 하는 값이라, 문 앞에 서 있는데도 안 넘어가서 뭘 더 해야 하는지 알 수 없었다.
+## 문지방을 넘는 정도면 충분하다.
+const ENTER_NEAR := 22.0    ## 문턱에서 이만큼 안쪽이면 문 앞으로 친다
+const ENTER_DEPTH := 0.28   ## 그 자리에서 안쪽으로 이만큼 더 들어가면 넘어간다
+const ENTER_FADE := 1.6
+
 ## 안쪽으로 걸어 들어갈 수 있는 끝. 발밑이 여기까지 올라가고 그만큼 작아진다.
 ##
 ## **경외감은 그것이 커지는 데서 오는 게 아니라 내가 작아지는 데서 온다**(`WalkScene`에서
@@ -140,6 +156,11 @@ var _elapsed := 0.0
 var _settled := false   ## 글이 다 떠올라 더 고쳐 쓸 필요가 없는 상태
 var _walked := 0.0      ## 처음 선 자리에서 좌우로 걸어온 거리(픽셀)
 var _depth := 0.0       ## 0이면 맨 앞, 1이면 갈 수 있는 가장 안쪽
+var _entering := false  ## 문턱을 넘는 중. 두 번 들어가지 않게 잠근다
+## 마지막 발소리 뒤로 걸어온 거리(픽셀). 시간이 아니라 **거리**로 세는 이유는, 안쪽으로
+## 갈수록 화면에서 느리게 움직이므로 시간으로 세면 걸음이 총총거리기 때문이다.
+var _since_step := 0.0
+var _left_foot := false
 
 
 func _ready() -> void:
@@ -154,17 +175,53 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_elapsed += delta
 	# 연출이 다 끝나야 손이 간다. 중간에 움직이면 빛이 같이 끌려다녀서 연출이 무너진다.
-	if _elapsed >= TOTAL_SECONDS:
+	if _elapsed >= TOTAL_SECONDS and not _entering:
 		# **멀수록 화면에서 느리게 움직인다.** 같은 걸음이라도 멀리 있으면 조금밖에 안 가는
 		# 것이 원근이다. 속도를 그대로 두면 안쪽에서 미끄러지듯 빨라 보인다.
 		var near: float = _size()
 		var going: float = Input.get_axis("ui_left", "ui_right")
+		var before: float = _walked
 		_walked = clampf(_walked + going * WALK_SPEED * near * delta,
 			WALK_FROM - FIGURE_AT.x, WALK_TO - FIGURE_AT.x)
 		var inward: float = Input.get_axis("ui_down", "ui_up")
-		_depth = clampf(_depth + inward * DEPTH_SPEED * near * delta / (FIGURE_AT.y - FOOT_FAR),
-			0.0, 1.0)
+		var deeper: float = inward * DEPTH_SPEED * near * delta / (FIGURE_AT.y - FOOT_FAR)
+		_depth = clampf(_depth + deeper, 0.0, 1.0)
+
+		# **발소리가 걸음을 만든다**(2026-08-14). 전에는 소리가 하나도 없어서, 정지 그림이
+		# 조용히 미끄러질 뿐이라 걷는 것으로 안 보였다(회원님). 그림을 새로 그리지 않아도
+		# 박자만 있으면 걸음이 된다 - 조우 화면이 걷는 것처럼 느껴지는 이유가 그것이다.
+		#
+		# 안쪽으로 들어가는 것도 걸음으로 친다. 위아래로만 움직이는데 조용하면 미끄러진다.
+		_since_step += absf(_walked - before) + absf(deeper) * (FIGURE_AT.y - FOOT_FAR)
+		var stride: float = STEP_LENGTH * near
+		if _since_step >= stride:
+			_since_step = fmod(_since_step, stride)
+			_step()
+
+		# 문 앞에 서서 안쪽으로 더 들어가면 넘어간다.
+		var at_threshold: bool = _walked >= (WALK_TO - FIGURE_AT.x) - ENTER_NEAR
+		if at_threshold and _depth >= ENTER_DEPTH:
+			_enter()
 	_apply(_elapsed)
+
+
+## 한 발. **한쪽이 조금 여려야 걸음에 좌우가 생긴다** - 같은 크기로 되풀이하면 사람이 아니라
+## 기계다. 그리고 안으로 들어갈수록 여려진다. 멀어지는 것이 소리에도 있어야 한다.
+func _step() -> void:
+	_left_foot = not _left_foot
+	var away: float = lerpf(0.0, -9.0, _depth)
+	Sfx.play(self, Sfx.STEP,
+		(-14.0 if _left_foot else -17.0) + away,
+		randf_range(0.95, 1.05) * (1.0 if _left_foot else 1.06))
+
+
+## 문턱을 넘는다. **소리부터 나고 화면이 잦아든다** - 넘어가는 것이 화면 전환이 아니라
+## 내가 한 일로 읽혀야 한다.
+func _enter() -> void:
+	_entering = true
+	Sfx.play(self, Sfx.FLARE, -6.0, 0.7)
+	await ScreenEffect.fade_out(ENTER_FADE)
+	get_tree().change_scene_to_file(ARCHIVE_SCENE)
 
 
 ## 지금 깊이에서의 크기 배율. 1이면 맨 앞, 작을수록 안쪽이다.

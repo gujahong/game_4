@@ -12,6 +12,9 @@ extends SceneTree
 
 const OUT_DIR := "res://assets/sfx"
 const RATE := 22050
+## 봉우리 상한. 1.0에 붙이지 않고 조금 남기는 이유는, 재생할 때 여러 소리가 겹치면 합쳐진
+## 자리에서 또 넘치기 때문이다.
+const CEILING := 0.90
 
 
 func _init() -> void:
@@ -47,12 +50,27 @@ func _init() -> void:
 func _step() -> PackedFloat32Array:
 	var out := _empty(1.1)
 	# **사인파를 쓰면 안 된다.** 굽 소리를 205Hz 사인으로 냈더니 핀셋 부딪는 소리가 됐다 -
-	# 순수한 음은 금속으로 들린다. 재료가 있는 소리는 **잡음을 걸러서** 만든다. 짧게 터뜨린
-	# 잡음을 넓은 띠로 통과시키면 음높이는 어렴풋한데 두께가 생겨서 "툭"이 된다.
+	# 순수한 음은 금속으로 들린다. 재료가 있는 소리는 **잡음을 걸러서** 만든다.
+	#
+	# ### 무게 (2026-08-14, 다시 만듦)
+	#
+	# 전에는 얇았다(실효 0.020, 열여섯 중 제일 작았다). 무게는 크기가 아니라 **낮은 것이
+	# 얼마나 오래 남느냐**다 - 예전 몸통은 `exp(-t*34)`라 100분의 몇 초 만에 사라져서 툭
+	# 하고 마는 소리였다. 셋을 바꿨다.
+	#
+	#   1. 몸통을 **모드 둘**로 (사인 하나는 재료가 없다). 55Hz와 그 1.83배 - 어긋난 비율
+	#   2. 그 감쇠를 34에서 **11로** 늦춘다. 이게 무게의 정체다
+	#   3. 몸통 잡음을 **분홍**으로. 백색을 0.05로 조이면 갈색이 되어 먹먹해진다
+	#
+	# 그리고 **딛는 순간과 실리는 순간을 어긋나게** 뒀다. 굽이 먼저 닿고 몸무게가 몇 밀리초
+	# 뒤에 얹혀야 사람이 걷는 것이 된다 - 동시에 나면 물건이 떨어진 소리다.
+	const WEIGHT_DELAY := 0.018
 	var low := 0.0
 	var band := 0.0
 	var thump := 0.0
 	var prev := 0.0
+	var phases := [0.0, 0.0]
+	var pink := _pink_state()
 	var f: float = 2.0 * sin(PI * 290.0 / float(RATE))
 	for i in out.size():
 		var t: float = float(i) / float(RATE)
@@ -63,11 +81,14 @@ func _step() -> PackedFloat32Array:
 		var high: float = hit - low - 0.9 * band   # 0.9면 꽤 넓다 - 좁으면 다시 금속이 된다
 		band += f * high
 		low += f * band
-		var thok: float = band * 1.5
+		var thok: float = band * 1.1
 
-		# 밑에 깔리는 둔한 소리. 걸러 낸 잡음이라 사인처럼 울리지 않는다.
-		thump = _lowpass(thump, noise, 0.05)
-		var weight: float = thump * 0.9 * exp(-t * 34.0)
+		# **몸무게가 실린다.** 조금 늦게 얹히고 천천히 빠진다.
+		var w: float = maxf(t - WEIGHT_DELAY, 0.0)
+		var settle: float = exp(-w * 11.0) * (1.0 - exp(-w * 260.0))
+		thump = _lowpass(thump, _pink(pink), 0.18)
+		var mass: float = _modal(phases, 55.0, [1.0, 1.83], [0.62, 0.16]) * settle
+		var weight: float = thump * 1.5 * settle + mass
 
 		# 밑창이 돌을 스치는 여린 소리. 아주 조금만.
 		var scuff: float = (noise - prev) * 0.18 * exp(-t * 60.0)
@@ -84,14 +105,18 @@ func _step() -> PackedFloat32Array:
 ## 붙잡히는 순간. 저역이 쿵 내려앉는다. **음이 아래로 미끄러져야** 뭔가 가라앉는 것이 된다.
 func _seize() -> PackedFloat32Array:
 	var out := _empty(1.4)
-	var phase := 0.0
+	# 사인 하나 대신 모드 셋(2026-08-14). 어긋난 비율이라 종이 안 되고, 낮게 미끄러지는
+	# 동안 셋이 같이 내려가서 **덩어리가 가라앉는 것**으로 들린다.
+	var phases := [0.0, 0.0, 0.0]
 	var low := 0.0
+	var pink := _pink_state()
 	for i in out.size():
 		var t: float = float(i) / float(RATE)
 		var hz: float = lerpf(96.0, 33.0, minf(t / 0.8, 1.0))
-		phase += TAU * hz / float(RATE)
-		low = _lowpass(low, randf_range(-1.0, 1.0), 0.03)
-		out[i] = (sin(phase) * 0.7 + low * 1.2) * exp(-t * 2.2)
+		# 분홍 잡음이라 0.03처럼 극단으로 안 걸러도 저역이 두툼하다.
+		low = _lowpass(low, _pink(pink), 0.20)
+		var body: float = _modal(phases, hz, [1.0, 1.72, 2.41], [0.55, 0.14, 0.06])
+		out[i] = (body + low * 1.0) * exp(-t * 2.2)
 	return out
 
 
@@ -106,20 +131,39 @@ func _seize() -> PackedFloat32Array:
 ## 그러니 여운을 길게 두고, 잡음을 30Hz쯤으로 잘게 끊어서 그그그긍 하고 긁히게 만든다.
 func _tick() -> PackedFloat32Array:
 	var out := _empty(0.5)
-	var body := 0.0
+	# **몸통을 모드 셋으로 바꿨다**(2026-08-14). 전에는 96Hz 사인 하나였는데, 사인 하나는
+	# "모드가 하나뿐인 물체"라 현실에 없는 소리고 그래서 금속으로 들린다(`SOUND.md` 2절).
+	#
+	# 판이나 막대는 정수배가 아닌 자리에서 운다. 1 : 1.59 : 2.14는 그 계열의 값이고,
+	# **정수배가 아니어야 종이 안 된다.**
+	#
+	# 그리고 **종과 돌을 가르는 것은 비율이 아니라 감쇠다.** 같은 모드라도 오래 울리면 종,
+	# 빨리 죽으면 덩어리다. 그래서 셋 다 빠르게 재우고, 높은 모드일수록 더 빨리 재운다 -
+	# 실제 물체도 높은 모드가 먼저 죽는다.
+	const MODES := [
+		[1.00, 0.50, 7.0],   # 비율, 세기, 감쇠
+		[1.59, 0.22, 11.0],
+		[2.14, 0.11, 16.0],
+	]
+	const BODY_HZ := 96.0
+	var phase := [0.0, 0.0, 0.0]
 	var grind := 0.0
 	var low := 0.0
 	for i in out.size():
 		var t: float = float(i) / float(RATE)
-		body += TAU * 96.0 / float(RATE)
 		grind += TAU * 31.0 / float(RATE)   # 긁히는 결. 이 주기가 곧 "그그그긍"이다
 		low = _lowpass(low, randf_range(-1.0, 1.0), 0.16)
 
 		# 잡음을 톱니처럼 끊는다. 고르게 흐르면 바람이고, 끊겨야 갈리는 것이 된다.
 		var teeth: float = 0.35 + 0.65 * absf(sin(grind))
 		var scrape: float = low * 2.4 * teeth * exp(-t * 5.0)
+
 		# 갈리는 동안 몸통이 낮게 운다. 무게는 여기서 온다.
-		var stone: float = sin(body) * 0.5 * exp(-t * 6.0)
+		var stone := 0.0
+		for m in MODES.size():
+			phase[m] += TAU * BODY_HZ * MODES[m][0] / float(RATE)
+			stone += sin(phase[m]) * MODES[m][1] * exp(-t * MODES[m][2])
+
 		out[i] = scrape + stone
 	return out
 
@@ -166,22 +210,38 @@ func _drone() -> PackedFloat32Array:
 	var seconds := 6.0
 	var out := _empty(seconds)
 	var low := 0.0
+	var pink := _pink_state()
 	for i in out.size():
 		var t: float = float(i) / float(RATE)
 		var turn: float = TAU * t / seconds
 
 		# 쿠구구극. 빠른 떨림(11Hz)과 느린 떨림(4.5Hz)을 곱해서 고르지 않게 만든다.
 		# **너무 낮게 거르면 안 들린다** - 작은 스피커가 못 내는 데다 몰아넣지 않는다.
-		low = _lowpass(low, randf_range(-1.0, 1.0), 0.14)
+		# 분홍 잡음을 쓴다(2026-08-14) - 백색을 세게 거르면 갈색이 되어 소리가 죽는데,
+		# 분홍은 저역이 이미 두툼해서 덜 걸러도 무게가 나온다.
+		low = _lowpass(low, _pink(pink), 0.30)
 		var pulse: float = 0.55 + 0.45 * sin(turn * 66.0) * sin(turn * 27.0)
 		var rumble: float = low * 2.6 * pulse
 
 		# 밑에 깔리는 92Hz. 이게 있어야 떨림이 허공에 뜨지 않는다.
 		var deep: float = sin(turn * 552.0) * 0.34
 
-		# 기괴한 것. 430Hz와 437Hz가 7Hz로 맥놀이하며 울렁인다.
-		var eerie: float = (sin(turn * 2580.0) + sin(turn * 2622.0)) * 0.5
-		eerie *= 0.30 + 0.22 * sin(turn * 13.0)
+		# ### 기괴한 것 (2026-08-14, 더 소름 끼치게)
+		#
+		# 430과 437이 7Hz로 맥놀이하는 것만으로는 "웅웅"에 가까웠다. 셋을 더했다.
+		#
+		#   1. **불협을 하나 더.** 430 위의 611Hz는 거의 증4도(트라이톤)다 - 서양 음악이
+		#      천 년간 피해 온 음정이고, 귀가 "틀렸다"고 느끼는 소리다
+		#   2. **음이 흔들린다.** 맥놀이 짝을 통째로 아주 조금(0.3%) 위아래로 민다.
+		#      고르게 울리면 기계고, **흔들려야 살아 있는 것**이 된다
+		#   3. **세기가 불규칙하게 숨 쉰다.** 주기가 서로 안 맞는 떨림 둘을 곱한다
+		#
+		# 한 바퀴 돌아야 하므로 전부 6초에 딱 떨어지는 정수 주기만 쓴다.
+		var waver: float = 1.0 + 0.003 * sin(turn * 19.0) * sin(turn * 7.0)
+		var eerie: float = (sin(turn * 2580.0 * waver) + sin(turn * 2622.0 * waver)) * 0.5
+		var tritone: float = sin(turn * 3666.0 * waver) * 0.34
+		var breathe: float = 0.30 + 0.22 * sin(turn * 13.0) * absf(sin(turn * 5.0))
+		eerie = (eerie + tritone) * breathe
 
 		out[i] = rumble * 0.5 + deep + eerie * 0.5
 	return out
@@ -198,6 +258,7 @@ func _wind() -> PackedFloat32Array:
 	var low := 0.0
 	var band := 0.0
 	var wide := 0.0
+	var pink := _pink_state()
 	for i in out.size():
 		var t: float = float(i) / float(RATE)
 		# 8초에 각각 3, 5, 2바퀴. 서로 안 맞아서 같은 자리로 안 돌아오는 것처럼 들린다.
@@ -226,9 +287,13 @@ func _wind() -> PackedFloat32Array:
 		low += f * band
 
 		# 그 뒤에 **바람의 몸**을 깐다. 휘파람만 있으면 소리가 허공에 가늘게 서 있고, 이
-		# 넓은 결이 받쳐 줘야 공기가 실제로 움직이는 것으로 들린다. 파도가 안 되게 세기는
-		# 거의 고정하고, 낮은 쪽으로 너무 몰지 않는다.
-		wide = _lowpass(wide, noise, 0.09)
+		# 넓은 결이 받쳐 줘야 공기가 실제로 움직이는 것으로 들린다.
+		#
+		# **여기를 분홍 잡음으로 바꿨다**(2026-08-14). 전에는 백색을 0.09로 세게 걸렀는데,
+		# 그러면 갈색(옥타브당 -6dB)이 되어 어두워지고 **어두운 잡음은 무엇이든 파도로
+		# 들린다.** 분홍은 옥타브당 -3dB라 이미 자연스러운 기울기를 갖고 있으므로, 훨씬
+		# 열어놓고(0.35) 결만 다듬으면 마르고 가느다란 공기가 된다.
+		wide = _lowpass(wide, _pink(pink), 0.35)
 
 		var swell: float = 0.82 + 0.18 * absf(slowest * 0.7 + slow * 0.3)
 		out[i] = clampf(band * 0.14 + wide * 0.95, -1.0, 1.0) * swell
@@ -256,26 +321,39 @@ func _blink() -> PackedFloat32Array:
 ## 빛살 한 조각이 터지는 소리. **팟-** 짧고 밝고 마르다.
 ## 잡음이 아래로 쓸려 내려가게 했더니 "슈욱"이 되어 조각이 깨지는 것 같지 않았다.
 func _shard() -> PackedFloat32Array:
+	# ### 2026-08-14, 다시 만듦
+	#
+	# 전에는 아래로 훑어 내려서 **"틱"** 하고 마는 소리였다(회원님). 딱딱하고 짧아서 빛이
+	# 아니라 뭔가 부딪는 소리로 들렸다. 방향을 뒤집었다.
+	#
+	#   위로 훑어 올린다   →  뻗어 나가는 것이 된다. 내려가면 떨어지는 것이다
+	#   유리처럼 운다      →  어긋난 높은 모드 셋을 아주 짧게. 빛에 결이 생긴다
+	#   앞을 부드럽게      →  0에서 시작하지 않고 몇 밀리초 부풀렸다 터진다. 딱 소리를 없앤다
 	var out := _empty(0.34)
 	var low := 0.0
 	var band := 0.0
-	var body := 0.0
+	var air := 0.0
+	var phases := [0.0, 0.0, 0.0]
+	var pink := _pink_state()
 	for i in out.size():
 		var t: float = float(i) / float(RATE)
 		var noise: float = randf_range(-1.0, 1.0)
 
-		# **빛살이 뻗어 나가는 소리다.** 1900Hz 사인을 얹었더니 띵- 하는 종소리가 됐다.
-		# 통과시키는 자리를 위에서 아래로 훑어 내리면, 한 점이 울리는 게 아니라 **뭔가가
-		# 지나간** 것으로 들린다.
-		var centre: float = lerpf(3200.0, 700.0, minf(t / 0.2, 1.0))
+		# **빛살이 뻗어 나가는 소리다.** 통과시키는 자리를 아래에서 위로 훑어 올린다.
+		var centre: float = lerpf(900.0, 6200.0, pow(minf(t / 0.13, 1.0), 0.6))
 		var f: float = 2.0 * sin(PI * minf(centre, 9000.0) / float(RATE))
-		var high: float = noise * exp(-t * 16.0) - low - 0.55 * band
+		var swell: float = (1.0 - exp(-t * 900.0)) * exp(-t * 13.0)
+		var high: float = noise * swell - low - 0.45 * band
 		band += f * high
 		low += f * band
 
-		# 밑에 두께를 조금. 빛살에도 무게가 있어야 가볍지 않다.
-		body = _lowpass(body, noise, 0.10)
-		out[i] = band * 1.6 + body * 0.7 * exp(-t * 24.0)
+		# 유리처럼 짧게 우는 결. 정수배가 아니라 곱게 안 울린다.
+		var glass: float = _modal(phases, 2100.0, [1.0, 2.37, 4.11], [0.30, 0.16, 0.09])
+		glass *= (1.0 - exp(-t * 700.0)) * exp(-t * 26.0)
+
+		# 뒤에 남는 공기. 분홍이라 지직거리지 않는다.
+		air = _lowpass(air, _pink(pink), 0.45)
+		out[i] = band * 1.5 + glass + air * 0.35 * exp(-t * 11.0)
 	return out
 
 
@@ -411,6 +489,51 @@ func _lowpass(state: float, input: float, k: float) -> float:
 	return state + (input - state) * k
 
 
+## 분홍 잡음. **자연의 소리는 백색이 아니다.**
+##
+## `randf_range`가 내는 백색 잡음은 모든 주파수가 고르게 들어 있어서 실제로는 "치익" 하는
+## 지직거림이다. 바람·비·먼 소음은 **옥타브가 올라갈수록 3dB씩 여려지는** 분홍 잡음이고,
+## 그게 귀에 자연스럽게 들린다.
+##
+## 백색을 저역통과 한 번 태우면 옥타브당 6dB씩 깎여 **갈색**이 된다 - 분홍보다 훨씬 어둡다.
+## `_wind`가 자꾸 파도가 됐던 이유 하나가 이것이다. 어두운 잡음은 무엇이든 파도로 들린다.
+##
+## 아래는 잘 알려진 필터 근사(Paul Kellet)다. 상태 일곱 개를 배열로 들고 다닌다 -
+## GDScript의 배열은 참조라 함수 안에서 고친 것이 밖에 남는다.
+func _pink_state() -> Array:
+	return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+
+## 모드 여러 개를 한 번에 굴린다. **사인 하나는 재료가 없다.**
+##
+## 현실의 물체는 때리면 여러 모드로 동시에 우는데, 사인 하나만 쓰면 "모드가 하나뿐인 물체"가
+## 되어 현실에 없는 소리가 된다. 그래서 귀가 금속이나 시험음으로 분류한다(`SOUND.md` 2절).
+##
+## 비율이 정수배면 종·악기가 되고 **어긋나야 덩어리**가 된다. 그리고 종과 덩어리를 가르는 것은
+## 비율만이 아니라 **감쇠**다 - 오래 울리면 종, 빨리 죽으면 물체다.
+##
+## `phases`는 배열이라 참조로 넘어간다. 부르는 쪽에서 한 번 만들어 들고 있으면 된다.
+func _modal(phases: Array, hz: float, ratios: Array, amps: Array) -> float:
+	var out := 0.0
+	for m in ratios.size():
+		phases[m] += TAU * hz * ratios[m] / float(RATE)
+		out += sin(phases[m]) * amps[m]
+	return out
+
+
+func _pink(s: Array) -> float:
+	var white: float = randf_range(-1.0, 1.0)
+	s[0] = 0.99886 * s[0] + white * 0.0555179
+	s[1] = 0.99332 * s[1] + white * 0.0750759
+	s[2] = 0.96900 * s[2] + white * 0.1538520
+	s[3] = 0.86650 * s[3] + white * 0.3104856
+	s[4] = 0.55000 * s[4] + white * 0.5329522
+	s[5] = -0.7616 * s[5] - white * 0.0168980
+	var out: float = s[0] + s[1] + s[2] + s[3] + s[4] + s[5] + s[6] + white * 0.5362
+	s[6] = white * 0.115926
+	return out * 0.11   # 대략 -1~1로 맞춘다
+
+
 ## 소리를 16비트로 눌러 담아 저장한다. **끝을 짧게 재워서** 뚝 끊길 때 나는 딱 소리를 막는다.
 func _save(name: String, samples: PackedFloat32Array, looping: bool = false) -> void:
 	# **여기는 다 서고 안이다.** 소리마다 따로 울림을 넣는 대신 나가는 길목에서 한 번에
@@ -448,4 +571,37 @@ func _save(name: String, samples: PackedFloat32Array, looping: bool = false) -> 
 	if failed != OK:
 		push_error("못 썼다: %s (오류 %d)" % [path, failed])
 		return
-	print("저장: %s (%.2f초)" % [path, float(samples.size()) / float(RATE)])
+	# **세기를 같이 찍는다**(2026-08-14). "안 들린다"를 파형 탓으로 넘겼다가, 재보니 그 소리가
+	# 열여섯 중 제일 컸고 진짜 원인은 같은 순간에 겹친 다른 소리였던 적이 있다. 뽑을 때마다
+	# 눈으로 보이면 그런 착각을 안 한다.
+	#
+	# 봉우리(peak)는 제일 큰 한 점이고 실효값(rms)이 **귀가 느끼는 크기**에 가깝다.
+	# 봉우리가 1.00에 붙어 있으면 잘려서 지직거린다는 뜻이다.
+	var peak := 0.0
+	for value in samples:
+		peak = maxf(peak, absf(value))
+
+	# **넘치면 줄인다. 자르지 않는다.**
+	#
+	# 전에는 16비트로 담을 때 ±1로 그냥 잘랐는데, 재보니 **열여섯 중 여덟이 넘치고 있었다**
+	# (flare 2.41, shard 2.32...). 잘린 소리는 두 가지로 나쁘다 - 봉우리가 평평해져서 지직거리고,
+	# 평평해진 만큼 실효값이 올라가 **다른 소리를 가린다.**
+	#
+	# 넘치는 것만 비율로 줄인다. 안 넘치는 것은 손대지 않으므로 서로의 균형이 유지된다.
+	# 울림(`_room`)이 소리를 겹쳐 더하므로 그것 때문에 넘치는 경우가 많다 - 그래서 울림을
+	# 씌운 **뒤에** 잰다.
+	var trimmed := ""
+	if peak > CEILING:
+		var gain: float = CEILING / peak
+		for i in samples.size():
+			samples[i] *= gain
+		trimmed = "  (%.2f배로 줄임)" % gain
+		peak = CEILING
+
+	var square := 0.0
+	for value in samples:
+		square += value * value
+	var rms: float = sqrt(square / maxf(float(samples.size()), 1.0))
+	print("저장: %-6s %5.2f초  봉우리 %.2f  실효 %.3f%s" % [
+		name, float(samples.size()) / float(RATE), peak, rms, trimmed
+	])

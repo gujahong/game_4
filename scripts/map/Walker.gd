@@ -21,6 +21,8 @@ const ENCOUNTER_SCENE := "res://scenes/Encounter.tscn"
 ## 가야 한다** - 오른쪽으로 걷다가 갑자기 위를 향하면 어긋난다.
 const ENCOUNTER_AT := Vector2(0.5, 0.04)
 const ENCOUNTER_RANGE := 20.0
+## 관문에서 넘어올 때 덮여 있던 암전을 걷는 시간. `Opening.ENTER_FADE`와 맞춘다.
+const ENTER_FADE := 1.6
 
 @onready var _room: TilesetRoom = $World/Room
 @onready var _camera: Camera2D = $World/Camera
@@ -39,8 +41,17 @@ func _ready() -> void:
 	_encounter = floor_rect.position + floor_rect.size * ENCOUNTER_AT
 	_place()
 
+	# **종이는 방보다 넓게 흩어져 있다.** 딱 바닥만큼만 두면 가장자리에서 종이가 사라지는
+	# 자리가 보인다. 심연 위에도 떠 있어야 이 방이 끝이 있는 상자가 아니게 된다.
+	$World/Pages.setup(floor_rect.grow(96.0))
+
 	# 나는 늘 화면 한가운데에 있으므로 화면 필터의 빛은 가운데 고정이면 된다.
 	_screen.material.set_shader_parameter("light_position", Vector2(0.5, 0.5))
+
+	# **관문을 넘어오면 화면이 까맣게 덮인 채로 도착한다**(2026-08-14). `ScreenEffect`는
+	# 오토로드라 씬을 갈아타도 그 암전이 그대로 남는다 - 여기서 걷어내야 서고가 보인다.
+	# 이 씬만 따로 열었을 때는 이미 투명해서 아무 일도 안 일어난다.
+	ScreenEffect.fade_in(ENTER_FADE)
 
 	if "--capture" in OS.get_cmdline_user_args():
 		_capture_and_quit()

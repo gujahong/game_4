@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/map/Walker.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/map/TilesetRoom.gd" id="2"]
@@ -6,12 +6,14 @@
 [ext_resource type="Shader" path="res://shaders/DitherScreen.gdshader" id="4"]
 [ext_resource type="Script" path="res://scripts/map/HeroSprite.gd" id="5"]
 [ext_resource type="SpriteFrames" path="res://assets/characters/pilgrim_rot/pilgrim_frames.tres" id="6"]
+[ext_resource type="Script" path="res://scripts/map/Pages.gd" id="7"]
 
 [sub_resource type="ShaderMaterial" id="ScreenFilter"]
 shader = ExtResource("4")
 shader_parameter/light_radius = 0.1
 shader_parameter/light_softness = 0.14
 shader_parameter/ambient = 0.08
+shader_parameter/tint = Color(1, 0.87, 0.7, 1)
 
 [node name="Room" type="Node"]
 script = ExtResource("1")
@@ -28,6 +30,9 @@ animation = &"idle_south"
 
 [node name="Camera" type="Camera2D" parent="World"]
 zoom = Vector2(2, 2)
+
+[node name="Pages" type="Node2D" parent="World"]
+script = ExtResource("7")
 
 [node name="FilterLayer" type="CanvasLayer" parent="."]
 layer = 50

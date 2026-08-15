@@ -3,8 +3,7 @@
 // 노드마다 필터를 붙이던 방식(FilteredSprite)은 맵처럼 노드가 많아지면 관리가 안 된다.
 // 이걸 쓰면 필터가 진짜로 **하나**가 된다 - 이 판보다 아래에 그려진 것은 전부 같은 필터를 통과한다.
 //
-// **등불은 이 판보다 위에 놓는다.** 그래야 색을 지킨다. "색을 가진 것은 등불뿐"이라는 규칙이
-// 레이어 순서로 그대로 표현된다.
+// **등불은 이 판보다 위에 놓는다.** 그래야 필터를 안 거치고 제 색을 지킨다.
 shader_type canvas_item;
 
 uniform sampler2D screen_texture : hint_screen_texture, repeat_disable, filter_nearest;
