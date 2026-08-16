@@ -130,19 +130,19 @@ func is_open() -> bool:
 
 var _wang_to_atlas: Dictionary = {}  ## wang 번호 -> 아틀라스 좌표
 var _centre := Vector2(COLS * 0.5, ROWS * 0.5)   ## 나선의 한가운데(칸 좌표)
+## 서가·적 자리는 한 번 정해지면 안 움직이는데 `sleeper_at()`은 매 프레임 불린다.
+## 그래서 시작할 때 한 번만 풀어 두고 그걸 읽는다.
+var _record_spots: Array[Vector2] = []
+var _sleeper_spots: Array[Vector2] = []
 
 
 func _ready() -> void:
 	var meta := _read_metadata()
-	if meta.is_empty():
-		return
-	tile_set = _build_tileset(meta)
-	_paint_room()
-
-
-## 이 칸이 바닥인가.
-func is_floor(cell: Vector2i) -> bool:
-	return _walkable(Vector2(cell) + Vector2(0.5, 0.5))
+	if not meta.is_empty():
+		tile_set = _build_tileset(meta)
+		_paint_room()
+	_record_spots = _ring_spots(RECORDS)
+	_sleeper_spots = _ring_spots(SLEEPERS)
 
 
 ## **세상 좌표로 물어보는 것.** Hero가 이걸 쓴다 - 칸이 아니라 실제 발밑 자리로 묻는다.
@@ -169,28 +169,27 @@ func entrance_px() -> Vector2:
 
 ## 서가들의 자리(세상 좌표). 칸이 아니라 실제 좌표로 내준다 - 쓰는 쪽이 칸을 몰라도 되게.
 func record_spots_px() -> Array[Vector2]:
-	return _ring_spots(RECORDS)
+	return _record_spots
 
 
 ## 이 자리에서 읽을 수 있는 서가가 있는가. 있으면 몇 번째인지, 없으면 -1.
 func record_at(point: Vector2) -> int:
-	var reach: float = RECORD_REACH * float(_tile_px())
-	var spots := record_spots_px()
-	for i in spots.size():
-		if point.distance_to(spots[i]) <= reach:
-			return i
-	return -1
+	return _spot_at(point, _record_spots, RECORD_REACH)
 
 
 ## 누워 있는 것들의 자리(세상 좌표).
 func sleeper_spots_px() -> Array[Vector2]:
-	return _ring_spots(SLEEPERS)
+	return _sleeper_spots
 
 
 ## 이 자리에서 깨어나는 것이 있는가. 있으면 몇 번째, 없으면 -1.
 func sleeper_at(point: Vector2) -> int:
-	var reach: float = SLEEPER_REACH * float(_tile_px())
-	var spots := sleeper_spots_px()
+	return _spot_at(point, _sleeper_spots, SLEEPER_REACH)
+
+
+## 이 자리에 닿는 것이 목록에 있으면 몇 번째인지, 없으면 -1. 서가와 적이 같은 물음이다.
+func _spot_at(point: Vector2, spots: Array[Vector2], reach_tiles: float) -> int:
+	var reach: float = reach_tiles * float(_tile_px())
 	for i in spots.size():
 		if point.distance_to(spots[i]) <= reach:
 			return i

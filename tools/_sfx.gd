@@ -211,6 +211,13 @@ func _drone() -> PackedFloat32Array:
 	var out := _empty(seconds)
 	var low := 0.0
 	var pink := _pink_state()
+	# 맥놀이 짝(430/437Hz)과 트라이톤(611Hz)의 위상. 흔들림은 **순간 주파수에 곱해 위상에
+	# 쌓아야 한다** - 쌓인 위상에 통째로 곱하면 흔들림이 시간에 비례해 커져서, 시작은 0.3%인데
+	# 6초 끝에서는 수십 %가 되어 사이렌이 된다. 흔들림의 두 떨림(19·7)이 한 바퀴에 정수
+	# 주기라 적분이 0이고, 기본 주파수도 6초에 정수 사이클이라 이음매는 그대로 맞는다.
+	var beat_a := 0.0
+	var beat_b := 0.0
+	var tri := 0.0
 	for i in out.size():
 		var t: float = float(i) / float(RATE)
 		var turn: float = TAU * t / seconds
@@ -238,8 +245,12 @@ func _drone() -> PackedFloat32Array:
 		#
 		# 한 바퀴 돌아야 하므로 전부 6초에 딱 떨어지는 정수 주기만 쓴다.
 		var waver: float = 1.0 + 0.003 * sin(turn * 19.0) * sin(turn * 7.0)
-		var eerie: float = (sin(turn * 2580.0 * waver) + sin(turn * 2622.0 * waver)) * 0.5
-		var tritone: float = sin(turn * 3666.0 * waver) * 0.34
+		var wobble: float = TAU * waver / float(RATE)
+		beat_a += wobble * 430.0
+		beat_b += wobble * 437.0
+		tri += wobble * 611.0
+		var eerie: float = (sin(beat_a) + sin(beat_b)) * 0.5
+		var tritone: float = sin(tri) * 0.34
 		var breathe: float = 0.30 + 0.22 * sin(turn * 13.0) * absf(sin(turn * 5.0))
 		eerie = (eerie + tritone) * breathe
 
@@ -534,24 +545,87 @@ func _pink(s: Array) -> float:
 	return out * 0.11   # 대략 -1~1로 맞춘다
 
 
-## 소리를 16비트로 눌러 담아 저장한다. **끝을 짧게 재워서** 뚝 끊길 때 나는 딱 소리를 막는다.
+## 소리를 다듬어 16비트로 눌러 담아 저장한다. 순서가 곧 규칙이다 -
+## **울림 → 끝 재우기 → 넘치면 줄이기 → 그 다음에야 16비트로 담는다.**
+## 전에는 담아서 저장한 **뒤에** 재고 줄였다. 파일에는 잘린 소리가 남는데 통계는 줄인 값을
+## 찍어서, 여덟 개가 일그러진 채로 저장되는 것을 숫자가 가려 줬다.
 func _save(name: String, samples: PackedFloat32Array, looping: bool = false) -> void:
 	# **여기는 다 서고 안이다.** 소리마다 따로 울림을 넣는 대신 나가는 길목에서 한 번에
 	# 씌운다 - 그래야 전부 같은 공간에서 난 소리로 들린다.
 	# 도는 소리(바람·공포)는 뺀다. 한 바퀴 돌아 이어 붙일 것이라 꼬리가 이음매를 망친다.
+	# 끝도 짧게 재워서 뚝 끊길 때 나는 딱 소리를 막는다.
 	if not looping:
 		samples = _room(samples)
+		_fade_tail(samples)
 
+	var trimmed := _tame(samples)
+
+	var path := "%s/%s.tres" % [OUT_DIR, name]
+	# **`.tres`로 저장한다.** `.wav`로 저장하면 `ResourceSaver`가 그 확장자를 다룰 줄 몰라서
+	# 아무것도 안 쓰고 조용히 실패한다(파일이 하나도 안 생겼는데 "저장"이라고 찍혔다).
+	# `.tres`는 고도가 그대로 읽는 리소스라 임포트를 거치지 않고, 루프 설정도 파일에 같이 남는다.
+	var failed := ResourceSaver.save(_wav(samples, looping), path)
+	if failed != OK:
+		push_error("못 썼다: %s (오류 %d)" % [path, failed])
+		return
+
+	# **세기를 같이 찍는다**(2026-08-14). "안 들린다"를 파형 탓으로 넘겼다가, 재보니 그 소리가
+	# 열여섯 중 제일 컸고 진짜 원인은 같은 순간에 겹친 다른 소리였던 적이 있다. 뽑을 때마다
+	# 눈으로 보이면 그런 착각을 안 한다.
+	#
+	# 봉우리(peak)는 제일 큰 한 점이고 실효값(rms)이 **귀가 느끼는 크기**에 가깝다.
+	# 봉우리가 1.00에 붙어 있으면 잘려서 지직거린다는 뜻이다.
+	print("저장: %-6s %5.2f초  봉우리 %.2f  실효 %.3f%s" % [
+		name, float(samples.size()) / float(RATE), _peak(samples), _rms(samples), trimmed
+	])
+
+
+## 끝 몇 밀리초를 스르르 재운다. 제자리에서 고친다(팩 배열은 참조로 넘어온다).
+func _fade_tail(samples: PackedFloat32Array) -> void:
 	var tail: int = mini(int(0.005 * float(RATE)), samples.size())
-	if not looping:
-		for i in tail:
-			samples[samples.size() - 1 - i] *= float(i) / float(tail)
+	for i in tail:
+		samples[samples.size() - 1 - i] *= float(i) / float(tail)
 
+
+## **넘치면 줄인다. 자르지 않는다.** 줄였으면 얼마나 줄였는지 적어서 돌려준다.
+##
+## 재보니 **열여섯 중 여덟이 넘치고 있었다**(flare 2.41, shard 2.32...). 잘린 소리는 두 가지로
+## 나쁘다 - 봉우리가 평평해져서 지직거리고, 평평해진 만큼 실효값이 올라가 **다른 소리를 가린다.**
+##
+## 넘치는 것만 비율로 줄인다. 안 넘치는 것은 손대지 않으므로 서로의 균형이 유지된다.
+## 울림(`_room`)이 소리를 겹쳐 더하므로 그것 때문에 넘치는 경우가 많다 - 그래서 울림을
+## 씌운 **뒤에**, 그리고 16비트로 담기 **전에** 잰다.
+func _tame(samples: PackedFloat32Array) -> String:
+	var peak := _peak(samples)
+	if peak <= CEILING:
+		return ""
+	var gain: float = CEILING / peak
+	for i in samples.size():
+		samples[i] *= gain
+	return "  (%.2f배로 줄임)" % gain
+
+
+func _peak(samples: PackedFloat32Array) -> float:
+	var peak := 0.0
+	for value in samples:
+		peak = maxf(peak, absf(value))
+	return peak
+
+
+func _rms(samples: PackedFloat32Array) -> float:
+	var square := 0.0
+	for value in samples:
+		square += value * value
+	return sqrt(square / maxf(float(samples.size()), 1.0))
+
+
+## 16비트 모노 wav 리소스로 담는다. 여기 오기 전에 이미 상한 아래로 눌러 놨으므로
+## `clampf`는 반올림 튐만 막는 안전판이다.
+func _wav(samples: PackedFloat32Array, looping: bool) -> AudioStreamWAV:
 	var bytes := PackedByteArray()
 	bytes.resize(samples.size() * 2)
 	for i in samples.size():
-		var value: int = int(clampf(samples[i], -1.0, 1.0) * 32767.0)
-		bytes.encode_s16(i * 2, value)
+		bytes.encode_s16(i * 2, int(clampf(samples[i], -1.0, 1.0) * 32767.0))
 
 	var stream := AudioStreamWAV.new()
 	stream.format = AudioStreamWAV.FORMAT_16_BITS
@@ -562,46 +636,4 @@ func _save(name: String, samples: PackedFloat32Array, looping: bool = false) -> 
 		stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		stream.loop_begin = 0
 		stream.loop_end = samples.size()
-
-	# **`.tres`로 저장한다.** `.wav`로 저장하면 `ResourceSaver`가 그 확장자를 다룰 줄 몰라서
-	# 아무것도 안 쓰고 조용히 실패한다(파일이 하나도 안 생겼는데 "저장"이라고 찍혔다).
-	# `.tres`는 고도가 그대로 읽는 리소스라 임포트를 거치지 않고, 루프 설정도 파일에 같이 남는다.
-	var path := "%s/%s.tres" % [OUT_DIR, name]
-	var failed := ResourceSaver.save(stream, path)
-	if failed != OK:
-		push_error("못 썼다: %s (오류 %d)" % [path, failed])
-		return
-	# **세기를 같이 찍는다**(2026-08-14). "안 들린다"를 파형 탓으로 넘겼다가, 재보니 그 소리가
-	# 열여섯 중 제일 컸고 진짜 원인은 같은 순간에 겹친 다른 소리였던 적이 있다. 뽑을 때마다
-	# 눈으로 보이면 그런 착각을 안 한다.
-	#
-	# 봉우리(peak)는 제일 큰 한 점이고 실효값(rms)이 **귀가 느끼는 크기**에 가깝다.
-	# 봉우리가 1.00에 붙어 있으면 잘려서 지직거린다는 뜻이다.
-	var peak := 0.0
-	for value in samples:
-		peak = maxf(peak, absf(value))
-
-	# **넘치면 줄인다. 자르지 않는다.**
-	#
-	# 전에는 16비트로 담을 때 ±1로 그냥 잘랐는데, 재보니 **열여섯 중 여덟이 넘치고 있었다**
-	# (flare 2.41, shard 2.32...). 잘린 소리는 두 가지로 나쁘다 - 봉우리가 평평해져서 지직거리고,
-	# 평평해진 만큼 실효값이 올라가 **다른 소리를 가린다.**
-	#
-	# 넘치는 것만 비율로 줄인다. 안 넘치는 것은 손대지 않으므로 서로의 균형이 유지된다.
-	# 울림(`_room`)이 소리를 겹쳐 더하므로 그것 때문에 넘치는 경우가 많다 - 그래서 울림을
-	# 씌운 **뒤에** 잰다.
-	var trimmed := ""
-	if peak > CEILING:
-		var gain: float = CEILING / peak
-		for i in samples.size():
-			samples[i] *= gain
-		trimmed = "  (%.2f배로 줄임)" % gain
-		peak = CEILING
-
-	var square := 0.0
-	for value in samples:
-		square += value * value
-	var rms: float = sqrt(square / maxf(float(samples.size()), 1.0))
-	print("저장: %-6s %5.2f초  봉우리 %.2f  실효 %.3f%s" % [
-		name, float(samples.size()) / float(RATE), peak, rms, trimmed
-	])
+	return stream

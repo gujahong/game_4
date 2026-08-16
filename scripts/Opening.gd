@@ -185,6 +185,7 @@ func _process(delta: float) -> void:
 			WALK_FROM - FIGURE_AT.x, WALK_TO - FIGURE_AT.x)
 		var inward: float = Input.get_axis("ui_down", "ui_up")
 		var deeper: float = inward * DEPTH_SPEED * near * delta / (FIGURE_AT.y - FOOT_FAR)
+		var before_depth: float = _depth
 		_depth = clampf(_depth + deeper, 0.0, 1.0)
 
 		# **발소리가 걸음을 만든다**(2026-08-14). 전에는 소리가 하나도 없어서, 정지 그림이
@@ -192,7 +193,9 @@ func _process(delta: float) -> void:
 		# 박자만 있으면 걸음이 된다 - 조우 화면이 걷는 것처럼 느껴지는 이유가 그것이다.
 		#
 		# 안쪽으로 들어가는 것도 걸음으로 친다. 위아래로만 움직이는데 조용하면 미끄러진다.
-		_since_step += absf(_walked - before) + absf(deeper) * (FIGURE_AT.y - FOOT_FAR)
+		# 가로와 똑같이 **실제로 움직인 만큼만** 센다 - 입력량으로 세면 끝에 막혀 제자리인데도
+		# 발소리가 난다.
+		_since_step += absf(_walked - before) + absf(_depth - before_depth) * (FIGURE_AT.y - FOOT_FAR)
 		var stride: float = STEP_LENGTH * near
 		if _since_step >= stride:
 			_since_step = fmod(_since_step, stride)

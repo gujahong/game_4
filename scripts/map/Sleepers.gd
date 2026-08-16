@@ -11,10 +11,11 @@ class_name Sleepers
 ## 그리고 등불 반경이 좁아서 **밟기 직전에야 보인다.** 밝히면 미리 보이고, 아끼면 모르고
 ## 지나가다 밟는다.
 ##
-## ### 부스럭거림이 먼저 온다
+## ### 부스럭거림이 먼저 온다 (아직 계획이다)
 ##
 ## 반응 거리(`SLEEPER_REACH`, 1.1칸)는 등불 반경보다 작다. **보고 나서 피할 수 있어야** 하기
-## 때문이다 - 다가가면 먼저 부스럭거리고, 거기서 물러나면 안 깨운다.
+## 때문이다 - 다가가면 먼저 부스럭거리고, 거기서 물러나면 안 깨우는 것이 목표인데,
+## **지금은 닿는 순간 바로 깬다.** 부스럭 소리와 물러날 틈은 아직 안 만들었다.
 ##
 ## 일어서는 것은 화면에 안 그린다. 부스럭거리다 **바로 암전**으로 넘어가고, 눈을 뜨면 전투
 ## 화면에 그것이 서 있다. 안 보여주는 쪽이 무섭기도 하고, 64px로 일어서는 그림을 그려봐야
@@ -41,7 +42,6 @@ var _sprites: Array[Sprite2D] = []
 var _rise: Array[Texture2D] = []
 var _awake := -1        ## 지금 일어서는 중인 것. -1이면 없다
 var _rise_time := 0.0
-var _beaten := {}       ## 이미 잡은 것은 다시 안 세운다
 
 
 func setup(room: TilesetRoom) -> void:
@@ -71,13 +71,13 @@ func check(hero_at: Vector2, delta: float) -> void:
 		if _rise_time >= _rise_seconds() + HOLD_AFTER:
 			var index := _awake
 			_awake = -1
-			_beaten[index] = true
-			_sprites[index].visible = false
+			# 일어선 것은 **그대로 세워 둔다.** 암전이 끝나기 전에 숨기면 눈앞에서 사라진다 -
+			# `woke`를 받은 쪽이 씬을 갈아타므로 여기서 치울 것이 없다.
 			woke.emit(index)
 		return
 
 	var near := _room.sleeper_at(hero_at)
-	if near < 0 or _beaten.has(near):
+	if near < 0:
 		return
 	_awake = near
 	_rise_time = 0.0
@@ -85,13 +85,6 @@ func check(hero_at: Vector2, delta: float) -> void:
 
 func _rise_seconds() -> float:
 	return float(maxi(_rise.size(), 1)) / RISE_FPS
-
-
-## 잡고 돌아왔을 때. 잡은 것은 다시 안 선다.
-func mark_beaten(index: int) -> void:
-	_beaten[index] = true
-	if index >= 0 and index < _sprites.size():
-		_sprites[index].visible = false
 
 
 ## **한 번만 재생하고 마지막에 멈춘다.** 되풀이하면 일어섰다 누웠다 하는 꼴이 된다.
