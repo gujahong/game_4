@@ -45,11 +45,20 @@ const LANTERN_PIXELS := 4.0
 ## 빛무리도 등불만큼 커진다.
 const GLOW_ZOOM := 2.4
 ## 등불이 제일 밝을 때 보이는 반경(화면 짧은 쪽에 대한 비율). 1.4면 구석까지 닿는다.
-const DARK_WIDE := 1.4
+## **제일 밝은 칸도 다 열지 않는다**(회원님). 구석까지 훤하면 어둠 속을 걷는 이야기가
+## 아니게 된다 - 예전의 "밝음" 칸이 이제 천장이다.
+const DARK_WIDE := 0.75
+## 제일 어두울 때(꺼짐 바로 위)의 반경. 0이면 아무것도 안 보인다.
+const DARK_NEAR := 0.05
+## 밝기의 바닥. 이보다 아래로는 안 내려간다 - 한 칸 내렸는데 절반 넘게 떨어지면
+## 조리개가 확 닫힌 것처럼 보인다.
+const DARK_FLOOR := 0.14
 ## 어둠의 가장자리가 스러지는 폭. **크게 잡아야 조리개가 아니라 어둠이 된다.**
-const SHADE_SOFT := 1.9
+const SHADE_SOFT := 5.0
 ## 어두울 때 화면 전체가 같이 내려가는 몫.
 const SHADE_DIM := 0.55
+## 제일 밝을 때도 이만큼은 눌러 둔다. 0이면 화면이 대낮처럼 평평해진다.
+const SHADE_DIM_FLOOR := 0.12
 ## 불이 떨리는 폭. 0.12면 세기가 위아래로 12%쯤 흔들린다 - 더 키우면 불이 꺼질락 말락 해서
 ## 화면이 정신없고, 더 줄이면 안 흔들리는 것과 구별이 안 된다.
 const FLICKER := 0.12
@@ -506,6 +515,10 @@ func _on_message(text: String) -> void:
 ## 등불 밝기를 화면 전체로 흘려보낸다. **그래서 남은 기름을 나타내는 눈금이 따로 필요 없다** -
 ## 세상이 어두워지는 것이 곧 눈금이다. 빛의 색은 내 체력이라 다칠수록 붉어진다.
 func _refresh() -> void:
+	# **어둠은 글자보다 먼저다.** 이 함수는 다 앉은 뒤에야 도는데, 그전까지 일러스트가
+	# 어둠을 안 뒤집어쓴 채로 들어오다가 앉는 순간 툭 어두워졌다. 밝기는 글자가 뜨기 전에도
+	# 이미 걸려 있어야 한다.
+	_light_world()
 	if _hud == null:
 		return
 
@@ -515,28 +528,6 @@ func _refresh() -> void:
 	var colour := UiStyle.lamp_colour(health)
 	_hud.show_state(battle, _glow, colour)
 
-	# 세상은 어두워지고 색을 잃는다. 어느 씬에 얹힐지 모르므로 **거는 방법을 둘 다 둔다** -
-	# 색을 빼는 셰이더가 걸린 그림(`FilteredBackground`)이면 그쪽으로, 직접 그린 선이면
-	# 판 전체를 눌러서. 그래서 남은 기름을 나타내는 눈금이 따로 필요 없다.
-	var dark: float = Lantern.BRIGHTNESS[lantern.level]
-	var dull: float = Lantern.DESATURATE[lantern.level]
-	# **등불이 밝히는 데까지만 보인다.** 전투 배경에 어둠이 깔려 있고 그 구멍을 등불이 낸다 -
-	# 불이 꺼지면 구멍도 없어져서 아무것도 안 보인다. 세상을 통째로 눌러 어둡히는 것과 달리,
-	# 이건 **어디까지 보이느냐**를 정한다.
-	if _shade != null:
-		var reach: float = lerpf(0.0, DARK_WIDE, dark)
-		_shade.material.set_shader_parameter("radius", reach)
-		# **가장자리를 넓게 푼다.** 좁으면 검은 종이에 구멍을 뚫은 것처럼 보인다 - 조리개가
-		# 아니라 어둠이라야 하므로, 경계가 한참에 걸쳐 스러져야 한다.
-		_shade.material.set_shader_parameter("softness", SHADE_SOFT)
-		# **어두워지면 화면 전체도 같이 내려간다.** 보이는 반경만 줄이면 그 안은 여전히
-		# 대낮이라 "불이 약해졌다"가 안 느껴진다.
-		_shade.material.set_shader_parameter("dim", (1.0 - dark) * SHADE_DIM)
-		_shade.material.set_shader_parameter("light_position", _lamp_seat() / SCREEN)
-	_dim(_world, dark, dull)
-	# **그 것은 더 빨리 어둠에 묻힌다.** 복도는 내가 걸어온 데라 어렴풋이라도 남지만, 저것은
-	# 등불이 닿는 만큼만 보인다 - 불을 줄이면 뭐가 서 있는지도 흐려져야 한다.
-	_dim(_enemy, pow(dark, 1.6), dull)
 
 	if _lamp != null and _lamp is Sprite2D:
 		_lamp.visible = _glow > 0.0
@@ -576,3 +567,29 @@ func _on_finished(outcome: String) -> void:
 		"player": battle.player_hp,
 		"enemy": _enemy_total(),
 	})
+
+
+## 등불 밝기를 세상에 흘려보낸다. **글자가 뜨기 전에도 걸려 있어야 한다** - 안 그러면
+## 일러스트가 밝은 채로 들어오다가 다 앉는 순간 툭 어두워진다.
+func _light_world() -> void:
+	var lantern := battle.lantern
+	# **바닥을 남긴다.** 밝기 값을 그대로 쓰면 어스름(0.46)에서 불씨(0.20)로 한 칸 내릴 때
+	# 절반 넘게 뚝 떨어져서 조리개가 확 닫힌 것처럼 보인다.
+	var dark: float = maxf(Lantern.BRIGHTNESS[lantern.level], DARK_FLOOR)
+	var dull: float = Lantern.DESATURATE[lantern.level]
+
+	# **등불이 밝히는 데까지만 보인다.** 어둠이 깔려 있고 그 구멍을 등불이 낸다.
+	if _shade != null:
+		# 곧게 늘리면 위쪽 두 칸이 붙어 버린다(반경 1이면 이미 구석까지 닿는다).
+		var reach: float = lerpf(DARK_NEAR, DARK_WIDE, pow(dark, 0.75))
+		_shade.material.set_shader_parameter("radius", reach)
+		# 가장자리를 넓게 푼다. 좁으면 검은 종이에 구멍을 뚫은 것처럼 보인다.
+		_shade.material.set_shader_parameter("softness", SHADE_SOFT)
+		# 어두워지면 화면 전체도 같이 내려간다.
+		_shade.material.set_shader_parameter("dim",
+			SHADE_DIM_FLOOR + (1.0 - dark) * SHADE_DIM)
+		_shade.material.set_shader_parameter("light_position", _lamp_seat() / SCREEN)
+
+	_dim(_world, dark, dull)
+	# 그것은 조금 더 빨리 묻힌다. **너무 가파르면(1.6제곱) 한 칸에 세 배씩 어두워진다.**
+	_dim(_enemy, pow(dark, 1.25), dull)
