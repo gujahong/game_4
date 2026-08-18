@@ -1004,6 +1004,18 @@ class _Lines extends Node2D:
 
 ## 확인용. 다 앉은 뒤 한 장 찍고 끝낸다(`-- --paper --shot`).
 func _shoot_and_quit() -> void:
+	# **맞는 순간을 찍는다.** 눈으로 "안 보인다"만으로는 못 가르므로, 강제로 한 대 때리고
+	# 하얀 사이에 셔터를 누른다.
+	if "--hit" in OS.get_cmdline_user_args():
+		await get_tree().create_timer(3.2).timeout
+		if _stage != null:
+			_stage._enemy_struck(10)
+		await get_tree().create_timer(0.12).timeout
+		await RenderingServer.frame_post_draw
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("res://tools/_battle_shot.png")
+		get_tree().quit()
+		return
 	await get_tree().create_timer(3.4).timeout
 	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw

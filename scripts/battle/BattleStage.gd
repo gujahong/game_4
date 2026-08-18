@@ -627,10 +627,11 @@ func _enemy_struck(hurt: int = 6) -> void:
 	var shaded := _enemy.material as ShaderMaterial
 	# **`get_shader_parameter`로 있는지 물으면 안 된다.** 한 번도 설정 안 한 값에는 `null`을
 	# 돌려줘서, 기본값이 있는 유니폼도 "없다"로 나온다 - 그래서 이 갈래가 한 번도 안 돌았다.
-	if shaded != null and shaded.shader != null and shaded.shader.has_parameter("flash"):
+	# **조건을 걸지 않는다.** 있는지 물어보는 방법마다 거짓이 나와서 이 갈래가 통째로
+	# 건너뛰어졌다 - 없는 유니폼에 값을 넣는 것은 아무 일도 안 일어나므로 그냥 넣는다.
+	if shaded != null:
+		shaded.set_shader_parameter("flash", 1.0)
 		var white := create_tween()
-		white.tween_method(func(v: float) -> void:
-			shaded.set_shader_parameter("flash", v), 1.0, 1.0, 0.03)
 		white.tween_interval(STRUCK_HOLD + STRUCK_HOLD_MORE * force)
 		white.tween_method(func(v: float) -> void:
 			shaded.set_shader_parameter("flash", v), 1.0, 0.0, 0.26)
