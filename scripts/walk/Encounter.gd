@@ -20,6 +20,8 @@ class_name Encounter
 const ENEMY_DEF := "res://resources/watcher.tres"
 ## 배경째 뽑힌 그림의 테두리를 흩는 셰이더.
 const EDGE_BLEED := "res://shaders/EdgeBleed.gdshader"
+## 손잡이에서 F5로 남기는 값. 눈으로 맞춘 숫자를 말로 옮기다 틀리지 않으려는 것이다.
+const TUNE_LOG := "res://tools/_tune.txt"
 
 ## **다른 화면에서 이 복도로 적을 들여보낼 때 쓴다.** 씬을 갈아타면 값이 안 넘어가므로
 ## 정적 변수로 건네준다 - 서고에서 종이 더미가 일어서면 여기에 적어 놓고 씬을 바꾼다.
@@ -257,6 +259,9 @@ func _ready() -> void:
 		# 떠 있는 고리(그 것)의 것이다 - 바닥에 선 것이 기울어 있으면 수평이 안 맞는다.
 		_target.rotation = 0.0
 		_begin_battle()
+		# **넘어오며 덮인 암전을 걷는다.** `ScreenEffect`는 오토로드라 씬을 갈아타도 그
+		# 검은 판이 그대로 남는다 - 안 걷으면 전투가 시작돼도 아무것도 안 보인다.
+		ScreenEffect.fade_in(IRIS_OPEN_FOR)
 		# 저쪽이 닫아 놓은 그 구멍에서 이어받아 연다. 카메라가 도는 동안 세상이 드러난다.
 		_shade.material.set_shader_parameter("light_position", Vector2(0.5, 0.5))
 		var open := create_tween()
@@ -1040,6 +1045,39 @@ func _tuner() -> void:
 		_tune_show())
 	box.add_child(bleed)
 
+	var band := HSlider.new()
+	band.min_value = 0.0
+	band.max_value = 0.5
+	band.step = 0.005
+	band.custom_minimum_size = Vector2(280, 16)
+	band.value = _tune_get("hold", 0.43)
+	band.value_changed.connect(func(v: float) -> void:
+		_tune_set("hold", v)
+		_tune_show())
+	box.add_child(band)
+
+	var rough := HSlider.new()
+	rough.min_value = 0.0
+	rough.max_value = 8.0
+	rough.step = 0.1
+	rough.custom_minimum_size = Vector2(280, 16)
+	rough.value = _tune_get("scatter", 0.0)
+	rough.value_changed.connect(func(v: float) -> void:
+		_tune_set("scatter", v)
+		_tune_show())
+	box.add_child(rough)
+
+	var dot := HSlider.new()
+	dot.min_value = 1.0
+	dot.max_value = 8.0
+	dot.step = 0.5
+	dot.custom_minimum_size = Vector2(280, 16)
+	dot.value = _tune_get("grain", 2.0)
+	dot.value_changed.connect(func(v: float) -> void:
+		_tune_set("grain", v)
+		_tune_show())
+	box.add_child(dot)
+
 	var big := HSlider.new()
 	big.min_value = 0.1
 	big.max_value = 2.6
@@ -1067,14 +1105,18 @@ func _tune_show() -> void:
 	if _tune_note == null:
 		return
 	var seat: Vector2 = _stage._enemy_seat if _stage != null else _target.position
-	_tune_note.text = "번짐 %.2f    크기 %.2f    자리 (%d, %d)   ← 그림을 끌어서 옮기세요" % [
-		_tune_reach(), _target.scale.x, int(seat.x), int(seat.y)]
+	_tune_note.text = "띠 %.3f   흩기 %.1f   점 %.1f   크기 %.2f   자리 (%d, %d)  ← 그림을 끌면 옮겨집니다" % [
+		_tune_get("hold", 0.43), _tune_get("scatter", 0.0), _tune_get("grain", 2.0),
+		_target.scale.x, int(seat.x), int(seat.y)]
 
 
 ## 그림을 마우스로 끌어 옮긴다. **무대의 자리를 고쳐야** 다음 프레임에 안 돌아간다.
 func _unhandled_input(event: InputEvent) -> void:
 	if _tune_note == null:
 		return
+	var key := event as InputEventKey
+	if key != null and key.pressed and key.keycode == KEY_F5:
+		_tune_save()
 	if event is InputEventMouseButton:
 		_tune_wheel(event as InputEventMouseButton)
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -1103,3 +1145,42 @@ func _tune_wheel(event: InputEventMouseButton) -> void:
 		_target.material.set_shader_parameter("reach",
 			clampf(_tune_reach() + (0.03 if up else -0.03), 0.0, 1.0))
 	_tune_show()
+
+
+## 셰이더 값 하나를 읽고 쓴다. 안 걸려 있으면 기본값을 돌려준다.
+func _tune_get(name: String, fallback: float) -> float:
+	if not _target.material is ShaderMaterial:
+		return fallback
+	var got: Variant = _target.material.get_shader_parameter(name)
+	return float(got) if got != null else fallback
+
+
+func _tune_set(name: String, value: float) -> void:
+	if _target.material is ShaderMaterial:
+		_target.material.set_shader_parameter(name, value)
+
+
+## **F5를 누르면 지금 값을 파일로 남긴다.** 눈으로 맞춘 숫자를 말로 옮기다 틀리느니,
+## 적어 놓고 그대로 리소스에 박는 편이 확실하다.
+func _tune_save() -> void:
+	var seat: Vector2 = _stage._enemy_seat if _stage != null else _target.position
+	var text := "\n".join([
+		"# `-- --paper --tune`에서 F5로 남긴 값",
+		"셰이더(EdgeBleed)",
+		"  hold    %.3f" % _tune_get("hold", 0.34),
+		"  grain   %.2f" % _tune_get("grain", 1.5),
+		"  scatter %.2f" % _tune_get("scatter", 0.0),
+		"  spread  %.3f" % _tune_get("spread", 0.07),
+		"  shimmer %.1f" % _tune_get("shimmer", 12.0),
+		"리소스(paper.tres)",
+		"  battle_at     Vector2(%d, %d)" % [int(seat.x), int(seat.y)],
+		"  화면에서의 배율  %.4f" % _target.scale.x,
+		"",
+	])
+	var file := FileAccess.open(TUNE_LOG, FileAccess.WRITE)
+	if file != null:
+		file.store_string(text)
+		file.close()
+	print(text)
+	if _tune_note != null:
+		_tune_note.text = "저장했다 → %s" % TUNE_LOG

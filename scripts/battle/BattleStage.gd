@@ -31,7 +31,7 @@ const ENEMY_HEIGHT := 1.9
 ## **전투에서는 사람이 안 보인다.** 카메라가 도는 동안 몸만 스러지고 등불만 남아서 여기
 ## 앉는다 - 이 화면에서 나를 나타내는 것은 등불이다(체력이 곧 불빛 색이고, 고를 것들도
 ## 이 불에서 뻗어 나온다). 사람을 세워 두면 그 규칙이 흐려지고 구도만 복잡해진다.
-const LAMP_AT := Vector2(62, 424)
+const LAMP_AT := Vector2(44, 428)
 ## **사람은 자리에 가서 사라지는 게 아니라 화면 밖으로 흘러 나간다.** 카메라가 돌아서 그가
 ## 화면에서 밀려나는 것이라, 제자리에서 스러지면 사람이 지워진 것이 되고 카메라가 돈 것이
 ## 안 된다. 등불만 염력에 매달린 채 남는다.
@@ -46,6 +46,10 @@ const LANTERN_PIXELS := 4.0
 const GLOW_ZOOM := 2.4
 ## 등불이 제일 밝을 때 보이는 반경(화면 짧은 쪽에 대한 비율). 1.4면 구석까지 닿는다.
 const DARK_WIDE := 1.4
+## 어둠의 가장자리가 스러지는 폭. **크게 잡아야 조리개가 아니라 어둠이 된다.**
+const SHADE_SOFT := 1.9
+## 어두울 때 화면 전체가 같이 내려가는 몫.
+const SHADE_DIM := 0.55
 ## 불이 떨리는 폭. 0.12면 세기가 위아래로 12%쯤 흔들린다 - 더 키우면 불이 꺼질락 말락 해서
 ## 화면이 정신없고, 더 줄이면 안 흔들리는 것과 구별이 안 된다.
 const FLICKER := 0.12
@@ -243,7 +247,10 @@ func _process(_delta: float) -> void:
 		return
 	var now: float = float(Time.get_ticks_msec()) * 0.001
 	if _enemy != null:
-		_enemy.position = _enemy_seat + Vector2(0.0, sin(now * BREATH_SPEED) * BREATH)
+		var lift := 0.0
+		if battle.enemies.is_empty() or not ("breathes" in battle.enemies[0]) or battle.enemies[0].breathes:
+			lift = sin(now * BREATH_SPEED) * BREATH
+		_enemy.position = _enemy_seat + Vector2(0.0, lift)
 	# 등불은 몸에서 떨어져 나온 뒤에도 제 박자로 떠 있고, 빛도 거기 붙어 다닌다.
 	# **정수 픽셀로 끊어 흔든다** - 부드럽게 움직이면 도트가 반 칸씩 어긋나 혼자 매끈해진다.
 	if _lantern != null:
@@ -519,6 +526,12 @@ func _refresh() -> void:
 	if _shade != null:
 		var reach: float = lerpf(0.0, DARK_WIDE, dark)
 		_shade.material.set_shader_parameter("radius", reach)
+		# **가장자리를 넓게 푼다.** 좁으면 검은 종이에 구멍을 뚫은 것처럼 보인다 - 조리개가
+		# 아니라 어둠이라야 하므로, 경계가 한참에 걸쳐 스러져야 한다.
+		_shade.material.set_shader_parameter("softness", SHADE_SOFT)
+		# **어두워지면 화면 전체도 같이 내려간다.** 보이는 반경만 줄이면 그 안은 여전히
+		# 대낮이라 "불이 약해졌다"가 안 느껴진다.
+		_shade.material.set_shader_parameter("dim", (1.0 - dark) * SHADE_DIM)
 		_shade.material.set_shader_parameter("light_position", _lamp_seat() / SCREEN)
 	_dim(_world, dark, dull)
 	# **그 것은 더 빨리 어둠에 묻힌다.** 복도는 내가 걸어온 데라 어렴풋이라도 남지만, 저것은

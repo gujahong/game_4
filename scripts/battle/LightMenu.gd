@@ -25,7 +25,7 @@ var origin := Vector2(480, 453):
 ## 그리고 **글자는 빛 끝에 매달리는 게 아니라 빛 안에 잠겨 있다.** 그래서 원뿔이 글자를 지나쳐
 ## 더 뻗고, 글자는 빛이 아직 진한 자리에 놓인다.
 const APEX_INSET := 8.0          ## 꼭짓점을 등불 중심에서 살짝 띄운다 - 한 점에 모이면 뾰족해 보인다
-const CONE_HALF_WIDTH := 81.0    ## 맨 끝에서의 반너비. 글자를 품어야 해서 넓다
+const CONE_HALF_WIDTH := 75.0    ## 맨 끝에서의 반너비. 글자를 품되 옆 줄기와 안 겹칠 만큼
 const CONE_OVERSHOOT := 1.65     ## 글자 자리보다 이만큼 더 뻗는다
 const CONE_OVERSHOOT_PICKED := 1.9
 const CONE_FALLOFF_AT := 0.72    ## 이 지점까지는 밝기를 지키고, 그 뒤로 스러진다
@@ -50,6 +50,9 @@ const OUTLINE_WIDTH := 6
 ## 묻혔다. 진하게 깔아야 글자가 빛 위에 얹힌 것으로 보인다.
 const BEAM_PICKED := 0.95
 const BEAM_REST := 0.5
+
+## 마우스가 이 안에 들어와야 그 줄기를 잡는다(픽셀).
+const PICK_NEAR := 130.0
 
 var light: float = 1.0:  ## 등불 밝기(0~1). 빛줄기의 진하기를 정한다.
 	set(value):
@@ -177,6 +180,14 @@ func _refresh_labels() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not enabled or _anchors.is_empty():
 		return
+	# **빛줄기 아무 데나 눌러도 골라진다.** 글자 칸을 정확히 짚어야만 먹으면, 마우스로는
+	# 밝아진 것을 보면서도 눌리지 않아 아무 일도 안 일어난 것처럼 느껴진다.
+	var click := event as InputEventMouseButton
+	if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
+		if _index >= 0:
+			_choose(_index)
+			get_viewport().set_input_as_handled()
+		return
 	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
 	match event.keycode:
@@ -185,14 +196,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_DOWN, KEY_RIGHT:
 			_move(1)
 		KEY_ENTER, KEY_SPACE, KEY_KP_ENTER:
-			_choose(_index)
+			if _index >= 0:
+				_choose(_index)
 		_:
 			return
 	get_viewport().set_input_as_handled()
 
 
 func _move(delta: int) -> void:
-	_index = wrapi(_index + delta, 0, _anchors.size())
+	# 아무것도 안 골라진 데서 키를 누르면 첫째부터 잡는다.
+	_index = 0 if _index < 0 else wrapi(_index + delta, 0, _anchors.size())
 	Sfx.play(self, Sfx.MOVE, -14.0, randf_range(0.94, 1.08))
 	_refresh_labels()
 	queue_redraw()
@@ -201,6 +214,9 @@ func _move(delta: int) -> void:
 func _on_hover(index: int) -> void:
 	if not enabled:
 		return
+	# 자리는 `_gui_pick`이 매 프레임 잡는다. 여기는 글자에 직접 올렸을 때의 길이다.
+	if _index != index:
+		Sfx.play(self, Sfx.MOVE, -14.0, randf_range(0.94, 1.08))
 	_index = index
 	_refresh_labels()
 	queue_redraw()
@@ -218,3 +234,38 @@ func _on_label_input(event: InputEvent, index: int) -> void:
 func _choose(index: int) -> void:
 	Sfx.play(self, Sfx.PICK, -10.0)
 	chosen.emit(index)
+
+
+## **마우스가 어느 줄기에 가까운지로 고른다.** 글자 칸에 들어가야만 반응하게 두면 줄기와 줄기
+## 사이에 빈 데가 있어서 한 박자 늦게 바뀐 것처럼 느껴진다.
+##
+## **다만 멀리 있으면 안 잡는다**(`PICK_NEAR`). 화면 아무 데나 가도 제일 가까운 것이 계속
+## 골라지면, 손을 뗀 자리가 골라진 것처럼 보여 이상하다.
+## 사이에 빈 데가 있어서 한 박자 늦게 바뀐 것처럼 느껴진다 - 빛줄기는 넓은데 글자는 작다.
+func _gui_pick(at: Vector2) -> void:
+	if not enabled or _anchors.is_empty():
+		return
+	var best := 0
+	var near := INF
+	for i in _anchors.size():
+		var gap: float = at.distance_to(_anchors[i])
+		if gap < near:
+			near = gap
+			best = i
+	# **멀어지면 골라 둔 것도 푼다.** 손을 뗐는데 하나가 계속 밝아 있으면 그것을 고른 채로
+	# 둔 것처럼 보인다 - 아무것도 안 고른 상태(-1)가 있어야 한다.
+	if near > PICK_NEAR:
+		if _index != -1:
+			_index = -1
+			_refresh_labels()
+			queue_redraw()
+		return
+	if best != _index:
+		_index = best
+		Sfx.play(self, Sfx.MOVE, -14.0, randf_range(0.94, 1.08))
+		_refresh_labels()
+		queue_redraw()
+
+
+func _process(_delta: float) -> void:
+	_gui_pick(get_global_mouse_position())

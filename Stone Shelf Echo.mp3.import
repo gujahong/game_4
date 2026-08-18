@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bw1tbbo0o5kgv"
+path="res://.godot/imported/Stone Shelf Echo.mp3-8aa8962d4f2117fd85a83cab395e14d0.mp3str"
+
+[deps]
+
+source_file="res://Stone Shelf Echo.mp3"
+dest_files=["res://.godot/imported/Stone Shelf Echo.mp3-8aa8962d4f2117fd85a83cab395e14d0.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

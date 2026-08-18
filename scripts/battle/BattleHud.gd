@@ -28,10 +28,6 @@ signal lamp_shifted(step: int)   ## -1이면 어둡게, +1이면 밝게
 ## 도망은 이 자리를 떠나는 일이라 결이 다르다. 넷과 떨어져 **혼자 아래로 뻗는 빛**이 된다.
 const ACTION_NAMES := ["공격", "기술", "대화", "방어"]
 const FLEE_NAME := "도주"
-## **너무 눕히면 글자가 화면 밖으로 나간다.** 34도에 196px이면 글자 가운데가 y=534라
-## 32px 글씨의 아랫동아리가 잘렸다. 24도면 y=507이라 아래로 17px이 남는다.
-const FLEE_ANGLE := 24.0
-const FLEE_REACH := 205.0
 
 ## 자리를 손으로 하나씩 적었더니 **길이도 사이도 제각각이라** 어떤 것은 겹치고 어떤 것은
 ## 혼자 멀리 떨어졌다. 등불에서 같은 거리에, 같은 각도 차이로 편다.
@@ -40,8 +36,8 @@ const FLEE_REACH := 205.0
 ## **몇 개가 오든 이 부채꼴 안에 고르게 편다.** 칸 간격을 못박아 두면 항목이 하나 늘 때
 ## 마지막 것이 화면 밖으로 나간다(취소를 붙이자마자 그렇게 됐다).
 const FAN_REACH := 214.0
-const FAN_FROM := -80.0
-const FAN_TO := 10.0
+const FAN_FROM := -78.0
+const FAN_TO := 21.0
 
 ## 대상·말길에서 물러설 때 붙는 마지막 줄기. **행동 넷에는 안 붙는다** - 거기서는 돌아갈
 ## 데가 없다.
@@ -104,14 +100,18 @@ func setup(origin: Vector2) -> void:
 	_say = EmberText.new()
 	KoreanFont.apply(_say, KoreanFont.NATIVE_SIZE * 2)
 	# 가로는 화면 전체를 써야 `[center]`의 기준이 화면 가운데가 된다.
-	_say.custom_minimum_size = Vector2(960.0, 0.0)
-	_say.position = Vector2(0.0, SAY_AT)
+	# **왼쪽 아래는 도주가 쓰는 자리다.** 화면 전체 폭으로 가운데를 잡으면 글자가 그 위에
+	# 겹친다 - 부챗살이 안 닿는 오른쪽 절반 안에서 가운데를 잡는다.
+	_say.custom_minimum_size = Vector2(640.0, 0.0)
+	_say.position = Vector2(320.0, SAY_AT)
 	add_child(_say)
 
 	_origin = origin
 	_menu = LightMenu.new()
 	_menu.origin = origin
-	_menu.setup(_fan(ACTION_NAMES))
+	# **`show_actions()`를 거쳐야 도주가 붙는다.** 여기서 부챗살 넷만 세웠더니 처음 한 턴은
+	# 도주가 아예 없었다 - 도주는 부챗살이 아니라 따로 아래로 뻗는 빛이라 그 함수가 붙인다.
+	show_actions()
 	_menu.chosen.connect(_on_chosen)
 	add_child(_menu)
 
@@ -152,15 +152,12 @@ func _show(mode: Picking, names: Array) -> void:
 	_menu.modulate.a = reveal
 
 
-## 넷은 부챗살로 펴고, **도주만 아래로 따로 뻗는다.** 같은 등불에서 나오지만 다른 쪽이다.
+## 다섯을 **같은 부채꼴에 고르게** 편다. 도주는 그중 제일 아래 줄기다.
 func show_actions() -> void:
 	_picking = Picking.ACTION
-	var spread: Array = _fan(ACTION_NAMES)
-	var away: float = deg_to_rad(FLEE_ANGLE)
-	spread.append({
-		"text": FLEE_NAME,
-		"anchor": (_origin + Vector2(cos(away), sin(away)) * FLEE_REACH).round(),
-	})
+	# **도주까지 같은 부채꼴에 고르게 넣는다.** 따로 각도를 잡아 뒀더니 그것만 사이가 달라서
+	# 제각각으로 보였다 - 제일 아래 줄기라는 것만으로 이미 다른 것과 구별된다.
+	var spread: Array = _fan(ACTION_NAMES + [FLEE_NAME])
 	_menu.setup(spread)
 	_apply_alpha()
 

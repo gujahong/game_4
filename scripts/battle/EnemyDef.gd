@@ -50,3 +50,7 @@ class_name EnemyDef
 ## 그 것은 떠 있는 고리라 화면 위쪽에 걸쳐도 되지만, 바닥에 선 것은 **발이 바닥에 닿아야**
 ## 한다 - 같은 자리에 놓으면 떠 있는 것처럼 보여 수평이 안 맞는다.
 @export var battle_at: Vector2 = Vector2.ZERO
+
+## 제자리에서 아주 느리게 오르내리는가. **떠 있는 것에만 쓴다** - 바닥에 선 것이 위아래로
+## 흔들리면 숨 쉬는 게 아니라 발이 안 붙은 것으로 보인다.
+@export var breathes: bool = true

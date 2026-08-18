@@ -28,12 +28,13 @@ display_name = "종이로 된 것"
 texture = ExtResource("2")
 max_hp = 22
 watches = false
+breathes = false
 damage_min = 3
 damage_max = 6
 heavy_damage = 11
 heavy_chance = 0.22
-battle_height = 1.07
-battle_at = Vector2(676, 318)
+battle_height = 0.796
+battle_at = Vector2(580, 226)
 
 telegraph_line = "낱장들이 한쪽으로 쏠린다. 무너뜨리려는 자세다."
 talk_options = Array[Resource]([SubResource("Talk_look"), SubResource("Talk_read")])

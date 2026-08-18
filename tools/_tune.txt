@@ -1,0 +1,10 @@
+# `-- --paper --tune`에서 F5로 남긴 값
+셰이더(EdgeBleed)
+  hold    0.465
+  grain   4.00
+  scatter 0.00
+  spread  0.070
+  shimmer 12.0
+리소스(paper.tres)
+  battle_at     Vector2(580, 226)
+  화면에서의 배율  0.8400
