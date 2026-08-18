@@ -19,12 +19,23 @@ uniform float scatter : hint_range(0.0, 8.0) = 0.0;
 // 자글거리는 빠르기(초당 몇 번 바뀌는가). **매 프레임 바꾸면 지글거려서 눈이 아프다** -
 // 도트 게임의 애니메이션처럼 초당 열몇 번으로 끊어야 자글자글로 읽힌다.
 uniform float shimmer : hint_range(0.0, 30.0) = 12.0;
+// 맞았을 때 흰빛으로 섞이는 정도. **`modulate`로는 못 한다** - 그건 곱하기라 어두운 그림을
+// 밝게 만들지 못하고 어둠을 걷어낼 뿐이다. 흰색 쪽으로 끌어당겨야 하얗게 튄다.
+uniform float flash : hint_range(0.0, 1.0) = 0.0;
 // 바깥으로 밀리는 폭. **가까운 변 쪽으로만 민다** - 위쪽 띠는 위로, 아래는 아래로.
 // 그림 밖으로는 못 나가므로, 안쪽 색을 끌어와서 밀려 나간 것처럼 보이게 한다.
 uniform float spread : hint_range(0.0, 0.3) = 0.07;
 
 float hash(vec2 cell) {
 	return fract(sin(dot(cell, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+// **밝기는 정점에서 받아 온다.** 조각 단계의 `COLOR`는 이미 텍스처 색이 곱해진 값이라,
+// 거기에 또 곱하면 그림이 제 색으로 두 번 어두워진다. 정점의 `COLOR`가 곧 modulate다.
+varying vec4 tint;
+
+void vertex() {
+	tint = COLOR;
 }
 
 void fragment() {
@@ -61,5 +72,6 @@ void fragment() {
 	if (keep < roll) {
 		discard;
 	}
-	COLOR = here;
+	vec4 lit = here * tint;
+	COLOR = vec4(mix(lit.rgb, vec3(1.0), flash), lit.a);
 }

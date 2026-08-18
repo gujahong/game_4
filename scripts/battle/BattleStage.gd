@@ -441,11 +441,11 @@ func _play_beats() -> void:
 		# **누가 맞았는지는 체력이 말해 준다.** 규칙에 "때렸다" 같은 신호를 새로 달지 않는다.
 		if beat["enemy"] < seen_enemy:
 			Sfx.play(self, Sfx.HIT, -9.0, randf_range(0.92, 1.1))
-			_enemy_struck()
+			_enemy_struck(seen_enemy - int(beat["enemy"]))
 		if beat["player"] < seen_player:
 			Sfx.play(self, Sfx.HURT, -7.0)
 			_quake(7.0)   # 맞은 것은 화면이 대신 앓는다
-			_lantern_struck()
+			_lantern_struck(seen_player - int(beat["player"]))
 		seen_player = beat["player"]
 		seen_enemy = beat["enemy"]
 
@@ -603,34 +603,73 @@ func _light_world() -> void:
 
 ## **맞으면 맞은 티가 난다.** 숫자만 줄고 그림이 가만히 있으면 때린 것 같지가 않다 -
 ## 한 번 하얗게 튀고 뒤로 밀렸다 돌아온다. 짧아야 한다, 길면 춤이 된다.
-const STRUCK_FLASH := Color(1.7, 1.6, 1.5, 1.0)
+const STRUCK_FLASH := Color(1.0, 0.96, 0.90, 1.0)
+## 하얗게 머무는 시간. **0.04초로는 안 보인다** - 한 프레임 스치고 마니까 눈에 안 잡힌다.
+## 약한 타격에서도 이만큼은 하얗다. **여기에 세기를 더 얹는다** - 곱하기로만 하면 약한
+## 타격이 한 프레임 스치고 말아서 맞았는지도 모른다.
+const STRUCK_HOLD := 0.2
+const STRUCK_HOLD_MORE := 0.22
+const STRUCK_BACK_FOR := 0.32
 const STRUCK_BACK := Vector2(16.0, -7.0)
 
 
-func _enemy_struck() -> void:
+## hurt는 이번에 깎인 체력. **세게 맞을수록 크게 튄다** - 다 똑같이 튀면 한 대 한 대의
+## 무게가 안 느껴진다. 우리 공격이 6~10이라 그 폭에 맞춰 잰다.
+func _enemy_struck(hurt: int = 6) -> void:
+	# **흰빛은 셰이더가 섞는다.** `modulate`는 곱하기라 어두운 그림을 밝게 못 만든다 -
+	# 어둠을 걷어낼 뿐이다. 셰이더에 `flash` 값이 있으면 그쪽을 쓴다.
 	if _enemy == null:
 		return
 	_jerking = true
+	var force: float = clampf(float(hurt) / 10.0, 0.35, 1.6)
 	var was: Color = _enemy.modulate
 
+	var shaded := _enemy.material as ShaderMaterial
+	if shaded != null and shaded.get_shader_parameter("flash") != null:
+		var white := create_tween()
+		white.tween_method(func(v: float) -> void:
+			shaded.set_shader_parameter("flash", v), 1.0, 1.0, 0.03)
+		white.tween_interval(STRUCK_HOLD + STRUCK_HOLD_MORE * force)
+		white.tween_method(func(v: float) -> void:
+			shaded.set_shader_parameter("flash", v), 1.0, 0.0, 0.26)
 	var flash := create_tween()
-	flash.tween_property(_enemy, "modulate", STRUCK_FLASH * Color(1, 1, 1, was.a), 0.04)
-	flash.tween_property(_enemy, "modulate", was, 0.24)
+	# **어둠에 눌린 색을 잠깐 통째로 걷어낸다.** 밝기를 곱해 놓은 상태라 조금 올려서는
+	# 티가 안 난다 - 아예 흰빛으로 갔다가 돌아와야 맞은 것이 보인다.
+	flash.tween_property(_enemy, "modulate", Color(STRUCK_FLASH.r, STRUCK_FLASH.g, STRUCK_FLASH.b, was.a), 0.03)
+	flash.tween_interval(STRUCK_HOLD + STRUCK_HOLD_MORE * force)
+	flash.tween_property(_enemy, "modulate", was, 0.26)
 
 	var jerk := create_tween()
 	jerk.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	jerk.tween_property(_enemy, "position", (_enemy_seat + STRUCK_BACK).round(), 0.05)
-	jerk.tween_property(_enemy, "position", _enemy_seat, 0.2)
+	jerk.tween_property(_enemy, "position", (_enemy_seat + STRUCK_BACK * force).round(), 0.05)
+	jerk.tween_property(_enemy, "position", _enemy_seat, STRUCK_BACK_FOR)
 	await jerk.finished
 	_jerking = false
 
 
 ## 내가 맞았다. **등불이 흔들린다** - 이 화면에서 나를 나타내는 것이 등불이라, 등불이
 ## 휘청여야 맞은 것이 나라는 게 보인다.
-func _lantern_struck() -> void:
+## hurt는 이번에 깎인 내 체력. **세게 맞을수록 크게 휘청이고 더 깜빡인다.**
+func _lantern_struck(hurt: int = 6) -> void:
 	if _lantern == null:
 		return
+	var force: float = clampf(float(hurt) / 9.0, 0.4, 1.7)
 	var was: Vector2 = _lantern.scale
 	var jolt := create_tween()
-	jolt.tween_property(_lantern, "scale", was * 1.18, 0.05)
+	jolt.tween_property(_lantern, "scale", was * (1.0 + 0.22 * force), 0.05)
 	jolt.tween_property(_lantern, "scale", was, 0.22)
+
+	# **깜빡깜빡.** 맞으면 불이 꺼질 뻔한다 - 등불이 곧 나이므로, 이게 체력이 깎인 것을
+	# 제일 잘 말해 준다. 세게 맞을수록 여러 번 깜빡인다.
+	# **느리게 깜빡여야 보인다.** 0.05초로 껐다 켜면 눈에 안 잡히고 화면이 지글거리기만 한다 -
+	# 꺼져 있는 시간이 충분해야 "꺼질 뻔했다"가 읽힌다. 대신 횟수를 줄인다.
+	var blinks: int = 1 + int(force * 1.6)
+	var wink := create_tween()
+	for i in blinks:
+		wink.tween_property(_lantern, "modulate:a", 0.1, 0.09)
+		wink.tween_property(_lantern, "modulate:a", 1.0, 0.17)
+	if _lamp != null:
+		var glow := create_tween()
+		for i in blinks:
+			glow.tween_property(_lamp, "self_modulate:a", _glow * 0.12, 0.09)
+			glow.tween_property(_lamp, "self_modulate:a", _glow, 0.17)
