@@ -444,7 +444,8 @@ func _play_beats() -> void:
 			_enemy_struck(seen_enemy - int(beat["enemy"]))
 		if beat["player"] < seen_player:
 			Sfx.play(self, Sfx.HURT, -7.0)
-			_quake(7.0)   # 맞은 것은 화면이 대신 앓는다
+			# **내가 맞으면 화면이 앓는다.** 세게 맞을수록 크게 흔들린다.
+			_quake(5.0 + 1.4 * float(seen_player - int(beat["player"])))
 			_lantern_struck(seen_player - int(beat["player"]))
 		seen_player = beat["player"]
 		seen_enemy = beat["enemy"]
@@ -484,18 +485,31 @@ func _wait(seconds: float) -> void:
 	await get_tree().create_timer(seconds).timeout
 
 
-## 맞을 때 세상이 한 번 앓는다. **`CanvasLayer` 위의 것들은 안 흔들린다** - 등불과 글자까지
-## 같이 떨면 화면 전체가 흔들리는 것이라 멀미가 나고, 맞은 것이 나라는 게 안 보인다.
+## 맞을 때 화면이 앓는다. **세상만이 아니라 화면 전체가 흔들린다**(회원님) - 등불과 글자까지
+## 같이 떨어야 내가 맞은 것으로 느껴진다. 다만 `CanvasLayer` 쪽은 폭을 줄인다. 같은 폭으로
+## 흔들면 글자를 읽을 수가 없다.
+const QUAKE_UI := 0.45
+
+
 func _quake(strength: float) -> void:
 	var world: Node2D = _enemy.get_parent() as Node2D if _enemy != null else null
-	if world == null:
-		return
-	var shake := create_tween()
-	for i in 5:
-		var away := Vector2(randf_range(-strength, strength), randf_range(-strength, strength))
-		shake.tween_property(world, "position", away.round(), 0.04)
-	shake.tween_property(world, "position", Vector2.ZERO, 0.07)
+	var layers: Array = []
+	if _hud != null:
+		layers.append(_hud)
+	if _lamp != null and _lamp.get_parent() is CanvasLayer:
+		layers.append(_lamp.get_parent())
 
+	var shake := create_tween().set_parallel(true)
+	for i in 5:
+		var away := Vector2(randf_range(-strength, strength), randf_range(-strength, strength)).round()
+		if world != null:
+			shake.chain().tween_property(world, "position", away, 0.04)
+		for layer in layers:
+			shake.tween_property(layer, "offset", (away * QUAKE_UI).round(), 0.04)
+	if world != null:
+		shake.chain().tween_property(world, "position", Vector2.ZERO, 0.07)
+	for layer in layers:
+		shake.tween_property(layer, "offset", Vector2.ZERO, 0.07)
 
 func _on_lamp_shifted(step: int) -> void:
 	if step < 0:
@@ -607,45 +621,47 @@ const STRUCK_FLASH := Color(1.0, 0.96, 0.90, 1.0)
 ## 하얗게 머무는 시간. **0.04초로는 안 보인다** - 한 프레임 스치고 마니까 눈에 안 잡힌다.
 ## 약한 타격에서도 이만큼은 하얗다. **여기에 세기를 더 얹는다** - 곱하기로만 하면 약한
 ## 타격이 한 프레임 스치고 말아서 맞았는지도 모른다.
-const STRUCK_HOLD := 0.2
+## 맞았을 때 테두리가 파고드는 깊이와, 돌아올 자리(`EdgeBleed.hold`의 기본값).
+const TORN_TO := 0.18
+const TORN_BACK := 0.465
+const STRUCK_HOLD := 0.16
 const STRUCK_HOLD_MORE := 0.22
 const STRUCK_BACK_FOR := 0.32
 const STRUCK_BACK := Vector2(16.0, -7.0)
 
-
 ## hurt는 이번에 깎인 체력. **세게 맞을수록 크게 튄다** - 다 똑같이 튀면 한 대 한 대의
 ## 무게가 안 느껴진다. 우리 공격이 6~10이라 그 폭에 맞춰 잰다.
+##
+## **맞으면 낱장이 흩어진다.** 흰빛으로 덮어 봤더니 이 그림에는 안 어울렸다 - 종이로 된
+## 것이니 **가장자리의 자글자글이 순간 안쪽까지 파고들었다 돌아오는** 편이 맞다.
 func _enemy_struck(hurt: int = 6) -> void:
-	# **흰빛은 셰이더가 섞는다.** `modulate`는 곱하기라 어두운 그림을 밝게 못 만든다 -
-	# 어둠을 걷어낼 뿐이다. 셰이더에 `flash` 값이 있으면 그쪽을 쓴다.
 	if _enemy == null:
 		return
 	_jerking = true
 	var force: float = clampf(float(hurt) / 10.0, 0.35, 1.6)
-	var was: Color = _enemy.modulate
 
+	# 조건을 안 건다. 유니폼이 있는지 물어보는 방법마다 거짓이 나와서 이 갈래가 통째로
+	# 건너뛰어졌고, 없는 유니폼에 값을 넣는 것은 아무 일도 안 일어난다.
 	var shaded := _enemy.material as ShaderMaterial
-	# **`get_shader_parameter`로 있는지 물으면 안 된다.** 한 번도 설정 안 한 값에는 `null`을
-	# 돌려줘서, 기본값이 있는 유니폼도 "없다"로 나온다 - 그래서 이 갈래가 한 번도 안 돌았다.
-	# **조건을 걸지 않는다.** 있는지 물어보는 방법마다 거짓이 나와서 이 갈래가 통째로
-	# 건너뛰어졌다 - 없는 유니폼에 값을 넣는 것은 아무 일도 안 일어나므로 그냥 넣는다.
 	if shaded != null:
-		shaded.set_shader_parameter("flash", 1.0)
-		var white := create_tween()
-		white.tween_interval(STRUCK_HOLD + STRUCK_HOLD_MORE * force)
-		white.tween_method(func(v: float) -> void:
-			shaded.set_shader_parameter("flash", v), 1.0, 0.0, 0.26)
-	var flash := create_tween()
-	# **어둠에 눌린 색을 잠깐 통째로 걷어낸다.** 밝기를 곱해 놓은 상태라 조금 올려서는
-	# 티가 안 난다 - 아예 흰빛으로 갔다가 돌아와야 맞은 것이 보인다.
-	flash.tween_property(_enemy, "modulate", Color(STRUCK_FLASH.r, STRUCK_FLASH.g, STRUCK_FLASH.b, was.a), 0.03)
-	flash.tween_interval(STRUCK_HOLD + STRUCK_HOLD_MORE * force)
-	flash.tween_property(_enemy, "modulate", was, 0.26)
+		var eaten: float = clampf(TORN_TO + (1.0 - force) * 0.06, 0.05, 0.45)
+		shaded.set_shader_parameter("hold", eaten)
+		var torn := create_tween()
+		torn.tween_interval(STRUCK_HOLD * force)
+		torn.tween_method(func(v: float) -> void:
+			shaded.set_shader_parameter("hold", v), eaten, TORN_BACK, 0.3)
 
 	var jerk := create_tween()
 	jerk.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	jerk.tween_property(_enemy, "position", (_enemy_seat + STRUCK_BACK * force).round(), 0.05)
 	jerk.tween_property(_enemy, "position", _enemy_seat, STRUCK_BACK_FOR)
+	# **밀리면서 떤다.** 뒤로 물러나는 것만으로는 밀린 것이고, 떨어야 맞은 것이 된다.
+	var shiver := create_tween()
+	for i in 5:
+		var off := Vector2(randf_range(-4.0, 4.0), randf_range(-4.0, 4.0)) * force
+		shiver.tween_property(_enemy, "offset", off.round(), 0.035)
+	shiver.tween_property(_enemy, "offset", Vector2.ZERO, 0.05)
+
 	await jerk.finished
 	_jerking = false
 

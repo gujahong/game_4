@@ -127,3 +127,4 @@ PixelLab로 뽑는 것(인물·적)은 **다섯 단계 통틀어 200생성**이 
 - `CLAUDE.md` — 작업 규칙
 - `PIXELLAB.md` — PixelLab 사용법과 한도
 - `SOUND.md` — 소리를 코드로 찍는 법. 우리가 쓰는 기법의 이름, 아직 안 써본 것, 겪은 것
+- `tools/_tune.txt` — 손잡이(`--tune`)에서 F5로 남긴 값
