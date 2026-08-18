@@ -54,3 +54,31 @@ func fade_out(duration: float = 2.0) -> void:
 	away.tween_property(self, "volume_db", -60.0, duration)
 	await away.finished
 	stop()
+
+
+## **씬을 갈아타도 안 끊기는 곡.** 화면 밑에 붙이면 그 화면과 같이 사라지므로, 트리의 뿌리에
+## 매달아 둔다(`ScreenEffect`가 오토로드라 암전이 남는 것과 같은 이치다).
+##
+## 같은 곡이 이미 흐르고 있으면 아무것도 안 한다 - 씬을 오갈 때마다 처음부터 다시 시작하면
+## 이어지는 게 아니라 툭툭 끊긴다.
+static var _kept: Music = null
+static var _kept_path := ""
+
+
+static func keep(host: Node, path: String, volume_db: float = VOLUME_DB,
+		from_position: float = 0.0) -> Music:
+	if _kept != null and is_instance_valid(_kept) and _kept_path == path:
+		return _kept
+	if _kept != null and is_instance_valid(_kept):
+		_kept.queue_free()
+	_kept_path = path
+	_kept = play_in(host.get_tree().root, path, volume_db, from_position)
+	return _kept
+
+
+## 뿌리에 매달아 둔 곡을 줄이거나 되돌린다. 전투가 붙는 동안 배경음을 낮출 때 쓴다.
+static func duck(to_db: float, over: float = 1.0) -> void:
+	if _kept == null or not is_instance_valid(_kept):
+		return
+	var fade := _kept.create_tween()
+	fade.tween_property(_kept, "volume_db", to_db, over)

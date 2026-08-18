@@ -69,6 +69,7 @@ var enabled: bool = true:
 var _index: int = 0
 var _anchors: Array[Vector2] = []
 var _labels: Array[Label] = []
+var _last_mouse := Vector2.INF   ## 마우스가 실제로 움직였을 때만 골라 준다
 
 
 ## 빛의 색. 체력이 깎일수록 붉어진다 - `BattleScreen`이 매 턴 갈아 끼운다.
@@ -268,4 +269,10 @@ func _gui_pick(at: Vector2) -> void:
 
 
 func _process(_delta: float) -> void:
-	_gui_pick(get_global_mouse_position())
+	# **마우스가 움직일 때만 마우스에게 넘긴다.** 매 프레임 잡아 두면 키로 옮겨 놓은 것을
+	# 곧바로 덮어써서 키보드가 안 먹는 것처럼 된다.
+	var at := get_global_mouse_position()
+	if at == _last_mouse:
+		return
+	_last_mouse = at
+	_gui_pick(at)

@@ -148,6 +148,9 @@ func begin(enemy_defs: Array, enemy: Node2D, hero: Node2D, lamp: Node2D,
 	battle.state_changed.connect(_refresh)
 	battle.finished.connect(_on_finished)
 
+	# **날아오는 동안에도 등불 밝기를 쓴다.** 이걸 여기서 한 번 걸어 두지 않으면 일러스트가
+	# 제 밝기 그대로 들어오다가 다 앉는 순간 어두워져서, 들어오는 내내 혼자 환하다.
+	_light_world()
 	_slide(enemy)
 
 

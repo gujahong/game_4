@@ -26,6 +26,10 @@ const ENCOUNTER_RANGE := 28.0
 ## 관문에서 넘어올 때 덮여 있던 암전을 걷는 시간. `Opening.ENTER_FADE`와 맞춘다.
 const ENTER_FADE := 1.6
 
+## 서고에 깔리는 곡. **여기는 오래 머무는 데라** 소리가 촘촘하면 금방 질린다 - 음이 드문드문
+## 떨어져서 걸음과 바람이 그 틈에 들어가야 한다.
+const TRACK := "res://assets/music/archive.mp3"
+
 ## 서고에서 만나는 종이로 된 것.
 const PAPER_DEF := "res://resources/paper.tres"
 ## 조리개가 닫히는 데 걸리는 시간. 떨림·일어서기와 겹쳐서 돌아간다.
@@ -71,6 +75,8 @@ func _ready() -> void:
 	# 오토로드라 씬을 갈아타도 그 암전이 그대로 남는다 - 여기서 걷어내야 서고가 보인다.
 	# 이 씬만 따로 열었을 때는 이미 투명해서 아무 일도 안 일어난다.
 	ScreenEffect.fade_in(ENTER_FADE)
+	# **씬을 갈아타도 안 끊긴다.** 전투로 넘어가도 서고는 그대로 서고다.
+	Music.keep(self, TRACK)
 
 	if "--capture" in OS.get_cmdline_user_args():
 		_capture_and_quit()
