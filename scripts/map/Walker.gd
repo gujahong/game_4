@@ -76,7 +76,9 @@ func _ready() -> void:
 	# 이 씬만 따로 열었을 때는 이미 투명해서 아무 일도 안 일어난다.
 	ScreenEffect.fade_in(ENTER_FADE)
 	# **씬을 갈아타도 안 끊긴다.** 전투로 넘어가도 서고는 그대로 서고다.
-	Music.keep(self, TRACK)
+	# **한 프레임 미룬다.** 씬이 막 세워지는 중에는 뿌리에 자식을 못 붙인다 - 그냥
+	# 부르면 조용히 실패해서 곡이 아예 안 나온다.
+	Music.keep.call_deferred(self, TRACK)
 
 	if "--capture" in OS.get_cmdline_user_args():
 		_capture_and_quit()
