@@ -18,6 +18,22 @@ class_name Encounter
 ## 전투는 **씬을 갈아타지 않고** 이 화면 위에 얹는다(`BattleStage`). 복도도 등불도 그것도
 ## 사라지지 않아야 카메라만 돌린 것으로 읽힌다.
 const ENEMY_DEF := "res://resources/watcher.tres"
+## 배경째 뽑힌 그림의 테두리를 흩는 셰이더.
+const EDGE_BLEED := "res://shaders/EdgeBleed.gdshader"
+
+## **다른 화면에서 이 복도로 적을 들여보낼 때 쓴다.** 씬을 갈아타면 값이 안 넘어가므로
+## 정적 변수로 건네준다 - 서고에서 종이 더미가 일어서면 여기에 적어 놓고 씬을 바꾼다.
+## 비어 있으면 이 화면의 기본값(그 것)이다.
+static var pending_enemy := ""
+## 참이면 걷기·붙잡힘·암전을 건너뛰고 곧장 전투로 간다.
+static var straight := false
+
+## 곧장 전투로 올 때 적이 시작하는 크기.
+const COMING_FROM := 0.1
+## **조리개가 넘어오는 크기.** 저쪽(`Walker`)이 여기까지 닫고 넘기면 여기서 그 크기부터
+## 열어 나간다 - 두 화면이 같은 구멍으로 이어져서 눈을 안 뗀 채로 배경만 바뀐다.
+const IRIS_SMALL := 0.16
+const IRIS_OPEN_FOR := 1.0
 const TARGET := "res://assets/enemies/watcher.png"
 ## 탑다운 맵에서 쓰는 그 주인공을 그대로 쓴다. **북쪽(뒷모습) 걷기**가 이 화면에 맞는다 -
 ## 등을 보이고 안으로 걸어 들어가는 그림이라서다. 떠 있는 등불도 `HeroSprite`가 같이 그린다.
@@ -117,6 +133,8 @@ var _shade: ColorRect
 var _flash: ColorRect
 var _burst: _Burst
 var _stage: BattleStage  ## 전투가 시작되면 여기 얹힌다. null이면 아직 걷는 중이다
+var _tune_note: Label   ## 값을 눈으로 잡을 때만 뜬다(`-- --tune`)
+var _tune_dragging := false
 
 ## 어둠이 먹어드는 구간(깊이). **시간이 아니라 거리에 물린다** - 멈추면 어두워지는 것도
 ## 멎어야 한다(회원님). 컷신이 아니라 내가 다가가서 벌어지는 일이다.
@@ -211,9 +229,42 @@ func _ready() -> void:
 	# **전투 구도만 볼 때 쓰는 지름길.** `-- --battle`로 켜면 8초를 걷고 붙잡히는 7초를
 	# 기다리고 암전·빛살까지 25초를 보지 않고 곧장 전투로 간다. `Battle.tscn`은 옛날 배경에
 	# CRT가 걸린 시험대라 이 화면과 딴판이므로, 구도를 볼 때는 여기로 봐야 한다.
-	if "--battle" in OS.get_cmdline_user_args():
+	# **다른 데서 마주친 것도 여기로 온다**(2026-08-18). 서고에서 종이 더미가 일어서면
+	# 걷는 것 없이 이 복도로 넘어와서 전투만 한다 - 배경이 투시선인 것은 전투 화면의 얼굴이라
+	# 적마다 다른 데서 싸우면 그 얼굴이 흐려진다. 다만 8초를 걷고 붙잡히는 연출은 그 것에게만
+	# 쓴다(`straight`).
+	# `-- --shot`을 같이 주면 다 앉은 뒤 한 장 찍고 끝낸다. **자리가 맞는지는 눈으로 재야
+	# 안다** - 말로 주고받으면 서로 다른 것을 상상하게 된다.
+	if "--tune" in OS.get_cmdline_user_args():
+		_tuner.call_deferred()
+	if "--shot" in OS.get_cmdline_user_args():
+		_shoot_and_quit()
+
+	# `-- --paper`로 켜면 종이로 된 것과 바로 붙는다. 서고를 걸어가 밟지 않고도 그 전투를
+	# 볼 수 있어야 그림이 뒤집혔는지 같은 것을 바로 확인한다.
+	if "--paper" in OS.get_cmdline_user_args():
+		pending_enemy = "res://resources/paper.tres"
+		straight = true
+
+	if straight or "--battle" in OS.get_cmdline_user_args():
+		straight = false
 		_depth = 1.0
+		_place()
+		# **작게 시작한다.** 무대가 카메라를 돌리면서 제 크기까지 키운다 - 일러스트가 자라는
+		# 것과 화면이 도는 것이 한 사건이 된다.
+		_target.scale = Vector2.ONE * COMING_FROM
+		# **각도를 0으로 못박는다.** `_place()`가 시간에 따라 그림을 천천히 돌리는데, 그건
+		# 떠 있는 고리(그 것)의 것이다 - 바닥에 선 것이 기울어 있으면 수평이 안 맞는다.
+		_target.rotation = 0.0
 		_begin_battle()
+		# 저쪽이 닫아 놓은 그 구멍에서 이어받아 연다. 카메라가 도는 동안 세상이 드러난다.
+		_shade.material.set_shader_parameter("light_position", Vector2(0.5, 0.5))
+		var open := create_tween()
+		open.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		open.tween_method(
+			func(r: float) -> void:
+				_shade.material.set_shader_parameter("radius", r),
+			IRIS_SMALL, OPEN_WIDE, IRIS_OPEN_FOR)
 
 
 func _process(delta: float) -> void:
@@ -355,7 +406,24 @@ func _begin_battle() -> void:
 	_stage = BattleStage.new()
 	add_child(_stage)
 	# 여럿을 받을 수 있는 자리다. 서고에서 마주치는 것은 지금 하나뿐이다.
-	_stage.begin([load(ENEMY_DEF)], _target, _figure, _lamp, _lines, _shade)
+	var def: EnemyDef = load(ENEMY_DEF if pending_enemy.is_empty() else pending_enemy)
+	pending_enemy = ""
+	# 그림이 반대쪽을 보고 있으면 여기서 뒤집는다. 다시 뽑느니 한 줄이 낫다.
+	if "flip_h" in def:
+		_target.flip_h = def.flip_h
+		_target.flip_v = def.flip_v
+	# **일렁임은 그 것에게만 걸린다.** 픽셀을 바깥으로 밀어내는 셰이더라, 다른 그림에 그대로
+	# 걸리면 모양이 통째로 일그러진다 - 종이가 이상해 보이던 것이 좌우가 아니라 이것이었다.
+	if "aura" in def and not def.aura:
+		# **배경째 뽑힌 그림은 테두리를 녹인다.** 안 그러면 화면에 정사각형 판이 하나 떠 있는
+		# 꼴이 된다 - 자리를 어디로 옮겨도 네모는 네모다. 도려내면 배경의 책장까지 없어지므로
+		# 가장자리만 디더로 흩어 어둠에 묻는다(`EdgeBleed`).
+		var bleed := ShaderMaterial.new()
+		bleed.shader = load(EDGE_BLEED)
+		_target.material = bleed
+	if def.texture != null:
+		_target.texture = def.texture
+	_stage.begin([def], _target, _figure, _lamp, _lines, _shade)
 
 	# **소실점이 그것을 따라간다.** 둘이 걸어서 자리를 옮기는 게 아니라 카메라가 돌아서
 	# 구도가 바뀌는 것이므로, 복도의 원근도 같이 돌아야 한다 - 안 그러면 배경만 아까 그대로
@@ -927,3 +995,111 @@ class _Lines extends Node2D:
 			if lit <= 0.01:
 				continue
 			_cube(vanish, deep, x, height, d, size, Color(1, 1, 1, lit))
+
+
+## 확인용. 다 앉은 뒤 한 장 찍고 끝낸다(`-- --paper --shot`).
+func _shoot_and_quit() -> void:
+	await get_tree().create_timer(3.4).timeout
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png("res://tools/_battle_shot.png")
+
+## ### 눈으로 보면서 값을 잡는 손잡이 (`-- --paper --tune`)
+##
+## 번지는 길이·크기·자리 셋이 서로 물려 있어서 **숫자를 말로 주고받으면 계속 어긋난다.**
+## 화면을 보면서 직접 돌리고, 마음에 드는 값이 나오면 그대로 리소스에 적으면 된다.
+##
+##   막대 두 개   번지는 길이, 크기
+##   마우스 끌기   자리
+##
+## **자리는 무대에게 알려줘야 한다.** 스프라이트를 직접 옮기면 다음 프레임에 무대가 제자리로
+## 되돌린다 - 숨을 쉬느라 매 프레임 자리를 다시 잡기 때문이다.
+func _tuner() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 120
+	add_child(layer)
+
+	var box := VBoxContainer.new()
+	box.position = Vector2(12, 8)
+	box.add_theme_constant_override("separation", 2)
+	layer.add_child(box)
+
+	_tune_note = Label.new()
+	_tune_note.add_theme_color_override("font_color", Color(0.45, 1.0, 0.55))
+	box.add_child(_tune_note)
+
+	var bleed := HSlider.new()
+	bleed.min_value = 0.0
+	bleed.max_value = 1.0
+	bleed.step = 0.01
+	bleed.custom_minimum_size = Vector2(280, 16)
+	bleed.value = _tune_reach()
+	bleed.value_changed.connect(func(v: float) -> void:
+		if _target.material is ShaderMaterial:
+			_target.material.set_shader_parameter("reach", v)
+		_tune_show())
+	box.add_child(bleed)
+
+	var big := HSlider.new()
+	big.min_value = 0.1
+	big.max_value = 2.6
+	big.step = 0.01
+	big.custom_minimum_size = Vector2(280, 16)
+	big.value = _target.scale.x
+	big.value_changed.connect(func(v: float) -> void:
+		_target.scale = Vector2(v, v)
+		if _stage != null:
+			_stage._enemy_zoom_to = Vector2(v, v)
+		_tune_show())
+	box.add_child(big)
+
+	_tune_show()
+
+
+func _tune_reach() -> float:
+	if not _target.material is ShaderMaterial:
+		return 0.0
+	var got: Variant = _target.material.get_shader_parameter("reach")
+	return float(got) if got != null else 0.0
+
+
+func _tune_show() -> void:
+	if _tune_note == null:
+		return
+	var seat: Vector2 = _stage._enemy_seat if _stage != null else _target.position
+	_tune_note.text = "번짐 %.2f    크기 %.2f    자리 (%d, %d)   ← 그림을 끌어서 옮기세요" % [
+		_tune_reach(), _target.scale.x, int(seat.x), int(seat.y)]
+
+
+## 그림을 마우스로 끌어 옮긴다. **무대의 자리를 고쳐야** 다음 프레임에 안 돌아간다.
+func _unhandled_input(event: InputEvent) -> void:
+	if _tune_note == null:
+		return
+	if event is InputEventMouseButton:
+		_tune_wheel(event as InputEventMouseButton)
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		_tune_dragging = event.pressed
+	elif event is InputEventMouseMotion and _tune_dragging:
+		var moved: Vector2 = (event as InputEventMouseMotion).relative
+		if _stage != null:
+			_stage._enemy_seat += moved
+		else:
+			_target.position += moved
+		_tune_show()
+
+
+## 막대가 안 먹을 때를 대비한 손잡이. **휠로 번짐, Shift+휠로 크기.**
+func _tune_wheel(event: InputEventMouseButton) -> void:
+	var up: bool = event.button_index == MOUSE_BUTTON_WHEEL_UP
+	var down: bool = event.button_index == MOUSE_BUTTON_WHEEL_DOWN
+	if not (up or down):
+		return
+	if Input.is_key_pressed(KEY_SHIFT):
+		var grow: float = 1.04 if up else 0.962
+		_target.scale *= grow
+		if _stage != null:
+			_stage._enemy_zoom_to = _target.scale
+	elif _target.material is ShaderMaterial:
+		_target.material.set_shader_parameter("reach",
+			clampf(_tune_reach() + (0.03 if up else -0.03), 0.0, 1.0))
+	_tune_show()

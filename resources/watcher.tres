@@ -36,6 +36,7 @@ script = ExtResource("1")
 display_name = "그 것"
 texture = ExtResource("2")
 max_hp = 44
+aura = true
 watches = true
 watch_lines = Array[String](["그 것은 이쪽을 보고 있다.", "눈꺼풀 하나 깜빡이지 않는다.", "[돈다]고리가 한 칸 돌아간다. 그뿐이다.", "아무 일도 일어나지 않는다. 그것이 견디기 어렵다.", "빛이 닿는 데까지 눈이 따라온다."])
 damage_min = 0

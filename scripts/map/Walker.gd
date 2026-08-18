@@ -26,6 +26,14 @@ const ENCOUNTER_RANGE := 28.0
 ## 관문에서 넘어올 때 덮여 있던 암전을 걷는 시간. `Opening.ENTER_FADE`와 맞춘다.
 const ENTER_FADE := 1.6
 
+## 서고에서 만나는 종이로 된 것.
+const PAPER_DEF := "res://resources/paper.tres"
+## 조리개가 닫히는 데 걸리는 시간. 떨림·일어서기와 겹쳐서 돌아간다.
+const IRIS_FOR := 0.9
+## 캄캄한 채로 두는 시간. 짧아야 "컷"이 된다.
+const CUT_HOLD := 0.35
+const VIGNETTE := "res://shaders/Vignette.gdshader"
+
 @onready var _room: TilesetRoom = $World/Room
 @onready var _camera: Camera2D = $World/Camera
 @onready var _hero_sprite: HeroSprite = $World/Hero
@@ -86,13 +94,52 @@ func _process(delta: float) -> void:
 		get_tree().change_scene_to_file(ENCOUNTER_SCENE)
 
 
-## 누워 있던 것이 일어섰다. **긴 연출은 그것한테만 쓴다** - 잡몹마다 15초짜리 암전·빛살을
-## 보여주면 지친다. 여기서는 암전만 짧게 깔고 전투로 넘긴다(회원님이 정한 순서: 암전 →
-## 빛 화악 → 카메라 무빙).
+## 종이 더미가 탑이 됐다. **전투는 투시선 복도로 가서 한다.**
+##
+## 걷고 붙잡히고 암전되는 **긴 연출은 나선 한가운데의 그것에게만** 쓴다. 길에서 마주치는
+## 것마다 15초짜리를 보여주면 특별할 것이 없어지므로, 여기서는 곧장 전투부터 시작한다.
+##
+## 일러스트가 작게 떠서 카메라가 도는 동안 제 크기까지 자란다(`Encounter.COMING_FROM`).
 func _on_woke(_index: int) -> void:
-	_left = true
+	if _left:
+		return
+	_left = true   # 걸음도 다른 더미도 여기서 멎는다
 	Sfx.play(self, Sfx.SEIZE, -6.0)
-	await ScreenEffect.fade_out(0.45)
+
+	# **전투는 투시선 복도에서 한다**(회원님). 서고 바닥 위에서 붙이면 전투마다 배경이 달라져
+	# 화면의 얼굴이 흐려진다. 어느 적과 싸우든 그 복도로 간다 - 다만 8초를 걷고 붙잡히는
+	# 연출은 그 것에게만 쓰므로, 여기서는 곧장 전투부터 시작하라고 일러 준다.
+	Encounter.pending_enemy = PAPER_DEF
+	Encounter.straight = true
+
+	# **조리개로 그것만 남기고 닫는다**(회원님). 통째로 까맣게 덮으면 화면이 한 번 끊기는데,
+	# 조리개는 **보고 있던 것을 계속 보면서** 배경만 갈아 끼우게 해 준다 - 눈을 안 뗀 채로
+	# 세상이 바뀐다. 저쪽(`Encounter`)이 같은 크기에서 열면서 이어받는다.
+	var iris := ColorRect.new()
+	iris.set_anchors_preset(Control.PRESET_FULL_RECT)
+	iris.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var shade := ShaderMaterial.new()
+	shade.shader = load(VIGNETTE)
+	shade.set_shader_parameter("radius", 3.0)
+	shade.set_shader_parameter("softness", 0.35)
+	shade.set_shader_parameter("light_position", Vector2(0.5, 0.5))
+	iris.material = shade
+	var layer := CanvasLayer.new()
+	layer.layer = 90   # 등불보다 위. 등불도 같이 가려져야 조리개가 된다
+	add_child(layer)
+	layer.add_child(iris)
+
+	var close := create_tween()
+	close.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	close.tween_method(
+		func(r: float) -> void: shade.set_shader_parameter("radius", r),
+		3.0, Encounter.IRIS_SMALL, IRIS_FOR)
+	await close.finished
+	# **거기서 딱 끊어 캄캄해진다**(회원님). 조리개를 저쪽에서 도로 여는 것보다, 탑과 나만
+	# 남은 구멍에서 한 번에 꺼지는 편이 낫다 - 마지막으로 본 것이 그 둘이라 그대로 전투로
+	# 이어진다. 오토로드라 이 암전은 씬을 갈아타도 남고, 저쪽이 걷어낸다.
+	ScreenEffect.set_blackout(true)
+	await get_tree().create_timer(CUT_HOLD).timeout
 	get_tree().change_scene_to_file(ENCOUNTER_SCENE)
 
 

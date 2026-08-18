@@ -18,6 +18,7 @@ const DRONE := "res://assets/sfx/drone.tres"    ## 다가올 때 깔리는 저�
 const WIND := "res://assets/sfx/wind.tres"      ## 서고에 흐르는 바람
 const BLINK := "res://assets/sfx/blink.tres"    ## 부와앙 - 불이 붙으려다 만다
 const SHARD := "res://assets/sfx/shard.tres"    ## 빛살 한 조각
+const RUSTLE := "res://assets/sfx/rustle.tres"  ## 종이가 떠는 소리
 const SWEEP := "res://assets/sfx/sweep.tres"    ## 카메라가 도는 소리
 const MOVE := "res://assets/sfx/move.tres"      ## 고를 것을 옮김
 const PICK := "res://assets/sfx/pick.tres"      ## 고름

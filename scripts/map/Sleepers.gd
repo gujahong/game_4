@@ -31,6 +31,14 @@ const RISE_DIR := "res://assets/enemies/paper_rise"
 const RISE_FRAMES := 9
 const RISE_FPS := 11.0
 
+## ### 일어서기 전에 먼저 떤다 (2026-08-18)
+##
+## 다가가면 **드드드드 몸을 떨다가** 일어선다. 곧바로 일어서면 기계가 튀어 오르는 것 같은데,
+## 한 박자 떨다 서면 **살아 있는 것이 깨어나는** 것이 된다. 부스럭 소리도 여기서 난다.
+##
+## 떨림은 **정수 픽셀로 끊는다** - 반 칸씩 어긋나면 도트가 혼자 매끈해진다.
+const SHAKE_FOR := 1.0
+const SHAKE_PIXELS := 2.0
 ## 일어선 뒤 암전까지의 뜸. 다 서고 나서 한 박자 있어야 "아, 저게 살아 있었구나"가 읽힌다.
 const HOLD_AFTER := 0.25
 
@@ -38,6 +46,7 @@ signal woke(index: int)
 
 var _room: TilesetRoom
 var _sprites: Array[Sprite2D] = []
+var _homes: Array[Vector2] = []   ## 떨기 전의 제자리
 var _rise: Array[Texture2D] = []
 var _awake := -1        ## 지금 일어서는 중인 것. -1이면 없다
 var _rise_time := 0.0
@@ -58,6 +67,7 @@ func setup(room: TilesetRoom) -> void:
 		sprite.position = at.round()
 		add_child(sprite)
 		_sprites.append(sprite)
+		_homes.append(sprite.position)
 
 
 ## 주인공이 여기 왔다. 가까우면 깨운다.
@@ -67,12 +77,20 @@ func setup(room: TilesetRoom) -> void:
 func check(hero_at: Vector2, delta: float) -> void:
 	if _awake >= 0:
 		_rise_time += delta
-		_show_rise(_awake)
-		if _rise_time >= _rise_seconds() + HOLD_AFTER:
+		# 먼저 떨고, 그다음에 일어선다.
+		if _rise_time < SHAKE_FOR:
+			_shake(_awake)
+		else:
+			_sprites[_awake].position = _homes[_awake]   # 떨림을 풀고 제자리에서 선다
+			_show_rise(_awake, _rise_time - SHAKE_FOR)
+		if _rise_time >= SHAKE_FOR + _rise_seconds() + HOLD_AFTER:
 			var index := _awake
 			_awake = -1
 			_beaten[index] = true
-			_sprites[index].visible = false
+			# **탑을 여기서 지우지 않는다.** 지우면 다 서고 나서 한 번 사라졌다가 다음
+			# 화면에서 일러스트로 다시 나타나는 꼴이라 끊긴다 - 조리개가 닫히는 동안에도
+			# 탑은 서 있어야 그 탑이 그대로 일러스트가 된 것으로 읽힌다.
+			# 안 보이게 하는 것은 잡고 돌아왔을 때다(`mark_beaten`).
 			woke.emit(index)
 		return
 
@@ -81,6 +99,8 @@ func check(hero_at: Vector2, delta: float) -> void:
 		return
 	_awake = near
 	_rise_time = 0.0
+	# 부스럭 소리가 떨림과 같이 시작한다.
+	Sfx.play(self, Sfx.RUSTLE, -6.0)
 
 
 func _rise_seconds() -> float:
@@ -95,8 +115,16 @@ func mark_beaten(index: int) -> void:
 
 
 ## **한 번만 재생하고 마지막에 멈춘다.** 되풀이하면 일어섰다 누웠다 하는 꼴이 된다.
-func _show_rise(index: int) -> void:
+func _show_rise(index: int, along: float) -> void:
 	if _rise.is_empty():
 		return
-	var frame: int = mini(int(_rise_time * RISE_FPS), _rise.size() - 1)
+	var frame: int = mini(int(along * RISE_FPS), _rise.size() - 1)
 	_sprites[index].texture = _rise[frame]
+
+
+## 제자리에서 잘게 떤다. **뒤로 갈수록 크게** - 떨림이 자라다가 일어서는 것으로 이어진다.
+func _shake(index: int) -> void:
+	var grow: float = _rise_time / SHAKE_FOR
+	var wide: float = SHAKE_PIXELS * (0.35 + 0.65 * grow)
+	_sprites[index].position = _homes[index] + Vector2(
+		randf_range(-wide, wide), randf_range(-wide, wide)).round()

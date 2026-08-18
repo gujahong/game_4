@@ -28,6 +28,7 @@ func _init() -> void:
 	_save("wind", _wind(), true)
 	_save("blink", _blink())
 	_save("shard", _shard())
+	_save("rustle", _rustle())
 	_save("sweep", _sweep())
 	_save("move", _move())
 	_save("pick", _pick())
@@ -354,6 +355,37 @@ func _shard() -> PackedFloat32Array:
 		# 뒤에 남는 공기. 분홍이라 지직거리지 않는다.
 		air = _lowpass(air, _pink(pink), 0.45)
 		out[i] = band * 1.5 + glass + air * 0.35 * exp(-t * 11.0)
+	return out
+
+
+## 종이 더미가 몸을 떠는 소리. **드드드드** - 마른 종이 여럿이 한꺼번에 부스럭거린다.
+##
+## 잡음을 그냥 흘리면 바람이 되므로(§3), **짧은 터짐 여럿을 불규칙한 간격으로 흩는다.**
+## 종이는 낱장이 제각각 다른 순간에 튕기는 물건이라 고른 박자가 없어야 한다.
+func _rustle() -> PackedFloat32Array:
+	var seconds := 1.0
+	var out := _empty(seconds)
+	var prev := 0.0
+	var next_pop := 0.0
+	var pop_at := 0.0
+	var pop_gain := 0.0
+	for i in out.size():
+		var t: float = float(i) / float(RATE)
+		var noise: float = randf_range(-1.0, 1.0)
+
+		# 다음 터짐 시각이 되면 새로 하나 터뜨린다. 간격이 제각각이라 박자가 안 선다.
+		if t >= next_pop:
+			pop_at = t
+			pop_gain = randf_range(0.35, 1.0)
+			next_pop = t + randf_range(0.012, 0.055)
+
+		# 낱장 하나가 튕기는 소리. 아주 짧고 마르다.
+		var since: float = t - pop_at
+		var crackle: float = (noise - prev) * pop_gain * exp(-since * 260.0)
+		prev = noise
+
+		# 뒤로 갈수록 세진다 - 떨림이 커지다가 일어서는 것으로 이어진다.
+		out[i] = crackle * 2.2 * (0.45 + 0.55 * (t / seconds))
 	return out
 
 

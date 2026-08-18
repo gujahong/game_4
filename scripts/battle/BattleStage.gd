@@ -85,6 +85,7 @@ var battle: Battle
 
 var _hud: BattleHud
 var _enemy: Node2D
+var _enemy_seat := ENEMY_AT   ## 이 적이 앉는 자리. 리소스가 정해두면 그것을 쓴다
 var _hero: Node2D
 var _lamp: Node2D
 var _world: CanvasItem
@@ -149,8 +150,20 @@ func _slide(enemy: Node2D) -> void:
 	_enemy_zoom_to = enemy.scale
 	if enemy is Sprite2D and (enemy as Sprite2D).texture != null:
 		var tall: float = float((enemy as Sprite2D).texture.get_size().y)
-		var want: float = SCREEN.y * ENEMY_HEIGHT / tall
+		# **크기는 적이 정한다.** 그 것은 넘쳐야 하지만 길에서 만나는 것까지 그러면 다
+		# 똑같이 커 보인다. 리소스에 안 적혀 있으면 예전 값을 쓴다.
+		var height: float = ENEMY_HEIGHT
+		if not battle.enemies.is_empty() and "battle_height" in battle.enemies[0]:
+			height = battle.enemies[0].battle_height
+		var want: float = SCREEN.y * height / tall
 		_enemy_zoom_to = Vector2(want, want)
+
+	# **앉는 자리도 적이 정한다.** 떠 있는 고리는 화면 위쪽에 걸쳐도 되지만 바닥에 선 것은
+	# 발이 바닥에 닿아야 한다 - 같은 자리에 놓으면 떠 있는 것처럼 보여 수평이 안 맞는다.
+	if not battle.enemies.is_empty() and "battle_at" in battle.enemies[0]:
+		var seat: Vector2 = battle.enemies[0].battle_at
+		if seat != Vector2.ZERO:
+			_enemy_seat = seat
 
 	_hero_from = _hero.position if _hero != null else Vector2.ZERO
 	_lamp_from = _lamp.position if _lamp != null else Vector2.ZERO
@@ -175,7 +188,7 @@ func _slide(enemy: Node2D) -> void:
 ## 매끈해진다. 움직임 자체는 끊지 않는다(칸칸이 끊어 봤더니 카메라가 아니라 화면이 튀었다).
 func _seat_at(t: float) -> void:
 	if _enemy != null:
-		_enemy.position = _enemy_from.lerp(ENEMY_AT, t).round()
+		_enemy.position = _enemy_from.lerp(_enemy_seat, t).round()
 		_enemy.scale = _enemy_zoom_from.lerp(_enemy_zoom_to, t)
 	# 사람은 화면 왼쪽 밖으로 흘러 나간다. 지워지는 게 아니라 카메라가 두고 가는 것이다.
 	if _hero != null:
@@ -230,7 +243,7 @@ func _process(_delta: float) -> void:
 		return
 	var now: float = float(Time.get_ticks_msec()) * 0.001
 	if _enemy != null:
-		_enemy.position = ENEMY_AT + Vector2(0.0, sin(now * BREATH_SPEED) * BREATH)
+		_enemy.position = _enemy_seat + Vector2(0.0, sin(now * BREATH_SPEED) * BREATH)
 	# 등불은 몸에서 떨어져 나온 뒤에도 제 박자로 떠 있고, 빛도 거기 붙어 다닌다.
 	# **정수 픽셀로 끊어 흔든다** - 부드럽게 움직이면 도트가 반 칸씩 어긋나 혼자 매끈해진다.
 	if _lantern != null:
