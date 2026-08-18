@@ -47,7 +47,7 @@ const CANCEL := "그만두기"
 ## 저 불의 것이라는 게 보인다 - 화면 구석에 두면 그냥 설정 창이 된다.
 const PANEL_BELOW := Vector2(0.0, 44.0)
 const OIL_SIZE := Vector2(120.0, 6.0)
-const OIL_BELOW := 52.0     ## 밝기 손잡이에서 더 내려가는 만큼
+const OIL_BELOW := 84.0     ## 밝기 손잡이에서 더 내려가는 만큼
 
 ## 지금 벌어진 일. **아래 가운데**에 한 단어씩 떠오른다(오프닝의 경구와 같은 방식).
 const SAY_AT := 496.0
@@ -179,21 +179,29 @@ func _build_lamp_panel(origin: Vector2) -> void:
 	var at: Vector2 = (origin + PANEL_BELOW).round()
 
 	_title = Label.new()
-	_title.text = "등불 밝기"
-	KoreanFont.apply(_title)
+	_title.text = "밝기"
+	# 픽셀 폰트는 네이티브(16)의 정수배로만 쓴다. 다음 칸이 32다.
+	KoreanFont.apply(_title, KoreanFont.NATIVE_SIZE * 2)
 	_title.add_theme_color_override("font_color", UiStyle.TEXT_DIM)
+	# **등불 바로 밑에 가운데를 맞춘다.** 글자 폭의 절반만큼 왼쪽으로 밀면 등불 축과 맞는다.
 	_title.position = at
+	# **폭을 재서 가운데를 맞춘다.** 글자와 버튼의 실제 크기는 글꼴과 테두리에 따라 달라서
+	# 숫자로 짐작하면 반드시 한쪽으로 틀어진다. 크기가 잡히면 그때 가운데로 민다.
+	_title.resized.connect(func() -> void:
+		_title.position.x = at.x - _title.size.x * 0.5)
 	add_child(_title)
 
 	_row = HBoxContainer.new()
-	_row.position = at + Vector2(22.0, 20.0)
+	_row.position = at + Vector2(0.0, 34.0)
+	_row.resized.connect(func() -> void:
+		_row.position.x = at.x - _row.size.x * 0.5)
 	_row.add_theme_constant_override("separation", 16)
 	add_child(_row)
 
 	for entry in [["+", 1], ["-", -1]]:
 		var button := Button.new()
 		button.text = entry[0]
-		KoreanFont.apply(button)
+		KoreanFont.apply(button, KoreanFont.NATIVE_SIZE * 2)
 		UiStyle.style_flat_button(button)
 		button.focus_mode = Control.FOCUS_NONE  # 빛줄기 메뉴의 방향키 조작에 안 끼어들게
 		button.pressed.connect(func() -> void: lamp_shifted.emit(entry[1]))
@@ -204,7 +212,7 @@ func _build_lamp_panel(origin: Vector2) -> void:
 	# 아니라 줄어들고 있다는 것만 보이면 된다.
 	_oil_back = ColorRect.new()
 	_oil_back.color = Color(0.16, 0.14, 0.11, 0.85)
-	_oil_back.position = at + Vector2(0.0, OIL_BELOW)
+	_oil_back.position = at + Vector2(-OIL_SIZE.x * 0.5, OIL_BELOW)
 	_oil_back.size = OIL_SIZE
 	add_child(_oil_back)
 

@@ -54,3 +54,4 @@ class_name EnemyDef
 ## 제자리에서 아주 느리게 오르내리는가. **떠 있는 것에만 쓴다** - 바닥에 선 것이 위아래로
 ## 흔들리면 숨 쉬는 게 아니라 발이 안 붙은 것으로 보인다.
 @export var breathes: bool = true
+

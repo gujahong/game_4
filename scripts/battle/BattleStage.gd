@@ -14,10 +14,12 @@ signal over(outcome: String)
 
 const SCREEN := Vector2(960, 540)
 
-## 전투 곡. **카메라가 돌기 시작할 때 같이 든다** - 다 앉고 나서 틀면 음악이 뒤늦게 따라온
-## 것이 되고, 이 순간은 화면이 도는 것과 소리가 바뀌는 것이 한 몸이어야 한다.
-const TRACK := "res://assets/music/battle.mp3"
-const TRACK_FROM := 2.0
+## **무대는 곡을 안 켠다**(회원님, 2026-08-18). 전투로 넘어갈 때마다 곡이 새로 시작하면
+## 그 자리에 깔려 있던 것(서고 곡)이 끊긴다 - 곡을 갈아 끼우는 것은 화면 쪽 일이다.
+## 곡을 얹을 일이 생기면 `Music.duck()`으로 깔린 것을 낮추고 얹는다.
+
+const DUCK_TO := -26.0
+const DUCK_FOR := 1.2
 
 ## 그것은 **오른쪽 위로 물러나면서 화면 밖으로 넘치고**, 나는 왼쪽 아래 구석으로 물러난다
 ## (회원님 스케치). 다 보이면 그냥 큰 그림이고, 잘려야 다 안 보인다 - 조우에서 세운
@@ -116,6 +118,7 @@ var _lantern_from := Vector2.ZERO
 var _lantern_zoom_from := Vector2.ONE
 var _lantern_zoom_to := Vector2.ONE
 var _seated := false   ## 다 옮겨 앉았는가. 그 뒤로는 여기서 숨을 이어 쉰다
+var _jerking := false  ## 맞아서 밀려나는 중. 그동안은 숨을 안 쉰다(자리를 뺏으면 안 된다)
 var _glow := 1.0       ## 기름이 정하는 빛 세기. 여기에 불꽃 흔들림을 곱한다
 var _last_player_hp := 0   ## 마지막으로 화면에 보여준 체력. 줄었으면 맞은 것이다
 var _last_enemy_hp := 0
@@ -138,10 +141,8 @@ func begin(enemy_defs: Array, enemy: Node2D, hero: Node2D, lamp: Node2D,
 	_world = world
 	_shade = shade
 
-	# 앞의 2초는 안 쓴다(회원님). 한 바퀴 돌아도 이 자리로 돌아온다.
-	Music.play_in(self, TRACK, Music.VOLUME_DB, TRACK_FROM)
-
 	battle = Battle.new(enemy_defs)
+
 	_last_player_hp = battle.player_hp
 	_last_enemy_hp = _enemy_total()
 	battle.message.connect(_on_message)
@@ -217,17 +218,13 @@ func _seat_at(t: float) -> void:
 		_lamp.position = _lamp_from.lerp(LAMP_AT, t).round()
 		_lamp.scale = _lamp_zoom_from.lerp(_lamp_zoom_from * GLOW_ZOOM, t)
 
-
 ## 다 옮겨 앉은 뒤에야 글자를 띄운다. **움직이는 중에 UI가 떠 있으면** 카메라가 도는 동안
 ## 메뉴가 따라다니는 꼴이라 화면이 둘로 갈린다.
 func _take_seat() -> void:
 	if _hero != null:
 		_hero.visible = false   # 이미 화면 밖이다. 그려 봐야 헛일이라 여기서 끈다
-	# **다 커진 자리에서 그림만 바꿔 끼운다.** 크기가 똑같아서 바뀌는 순간이 안 보이고,
-	# 도트만 네 배로 촘촘해진다 - 빛이 배어 나오면서 세밀해진 등불이 드러난다.
-	if _lantern != null and ResourceLoader.exists(LANTERN_ART):
-		_lantern.texture = load(LANTERN_ART)
-		_lantern.scale = Vector2.ONE * LANTERN_PIXELS
+	# 등불 그림은 **처음부터 큰 것**을 쓴다(`_take_lantern`). 예전에는 여기서 바꿔 끼웠는데,
+	# 크기를 맞춰 놔도 도트가 갑자기 촘촘해지는 것이 눈에 띄었다.
 	_seated = true
 
 	_hud = BattleHud.new()
@@ -258,7 +255,7 @@ func _process(_delta: float) -> void:
 	if not _seated:
 		return
 	var now: float = float(Time.get_ticks_msec()) * 0.001
-	if _enemy != null:
+	if _enemy != null and not _jerking:
 		var lift := 0.0
 		if battle.enemies.is_empty() or not ("breathes" in battle.enemies[0]) or battle.enemies[0].breathes:
 			lift = sin(now * BREATH_SPEED) * BREATH
@@ -303,14 +300,18 @@ func _take_lantern() -> void:
 		return
 	_hero.get_parent().add_child(_lantern)
 	_lantern.position = stood
-	_lantern.scale = Vector2(zoom, zoom)
 	_lantern.z_index = 3
 	_lantern_from = stood
+	# **처음부터 큰 그림을 쓴다**(회원님, 2026-08-18). 옮겨 앉고 나서 바꿔 끼우면 그 순간
+	# 도트가 갑자기 촘촘해지는 게 보인다 - 크기를 맞춰 놔도 눈에 띈다. 손에 들려 있을 때의
+	# 크기 그대로 시작해서 제 크기까지 자라기만 하면 된다.
+	if ResourceLoader.exists(LANTERN_ART):
+		_lantern.texture = load(LANTERN_ART)
+		_lantern.scale = Vector2(zoom, zoom) * 0.5   # 큰 그림은 가로세로가 두 배다
+	else:
+		_lantern.scale = Vector2(zoom, zoom)
 	_lantern_zoom_from = _lantern.scale
-	# **작은 그림을 큰 그림이 놓일 크기까지 키운다.** 큰 그림은 가로세로가 두 배라 배율은
-	# 절반이면 같은 크기다 - 다 커진 자리에서 그림만 바꿔 끼우면 크기는 그대로인데 도트만
-	# 촘촘해진다(`_take_seat`). 옮겨 앉는 도중에 바꾸면 그 순간 크기가 튄다.
-	_lantern_zoom_to = Vector2.ONE * LANTERN_PIXELS * 2.0
+	_lantern_zoom_to = Vector2.ONE * LANTERN_PIXELS
 
 
 ## 등불 그림이 지금 떠 있는 자리. 빛(`LampGlow`)을 여기 붙인다.
@@ -440,9 +441,11 @@ func _play_beats() -> void:
 		# **누가 맞았는지는 체력이 말해 준다.** 규칙에 "때렸다" 같은 신호를 새로 달지 않는다.
 		if beat["enemy"] < seen_enemy:
 			Sfx.play(self, Sfx.HIT, -9.0, randf_range(0.92, 1.1))
+			_enemy_struck()
 		if beat["player"] < seen_player:
 			Sfx.play(self, Sfx.HURT, -7.0)
 			_quake(7.0)   # 맞은 것은 화면이 대신 앓는다
+			_lantern_struck()
 		seen_player = beat["player"]
 		seen_enemy = beat["enemy"]
 
@@ -596,3 +599,38 @@ func _light_world() -> void:
 	_dim(_world, dark, dull)
 	# 그것은 조금 더 빨리 묻힌다. **너무 가파르면(1.6제곱) 한 칸에 세 배씩 어두워진다.**
 	_dim(_enemy, pow(dark, 1.25), dull)
+
+
+## **맞으면 맞은 티가 난다.** 숫자만 줄고 그림이 가만히 있으면 때린 것 같지가 않다 -
+## 한 번 하얗게 튀고 뒤로 밀렸다 돌아온다. 짧아야 한다, 길면 춤이 된다.
+const STRUCK_FLASH := Color(1.7, 1.6, 1.5, 1.0)
+const STRUCK_BACK := Vector2(16.0, -7.0)
+
+
+func _enemy_struck() -> void:
+	if _enemy == null:
+		return
+	_jerking = true
+	var was: Color = _enemy.modulate
+
+	var flash := create_tween()
+	flash.tween_property(_enemy, "modulate", STRUCK_FLASH * Color(1, 1, 1, was.a), 0.04)
+	flash.tween_property(_enemy, "modulate", was, 0.24)
+
+	var jerk := create_tween()
+	jerk.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	jerk.tween_property(_enemy, "position", (_enemy_seat + STRUCK_BACK).round(), 0.05)
+	jerk.tween_property(_enemy, "position", _enemy_seat, 0.2)
+	await jerk.finished
+	_jerking = false
+
+
+## 내가 맞았다. **등불이 흔들린다** - 이 화면에서 나를 나타내는 것이 등불이라, 등불이
+## 휘청여야 맞은 것이 나라는 게 보인다.
+func _lantern_struck() -> void:
+	if _lantern == null:
+		return
+	var was: Vector2 = _lantern.scale
+	var jolt := create_tween()
+	jolt.tween_property(_lantern, "scale", was * 1.18, 0.05)
+	jolt.tween_property(_lantern, "scale", was, 0.22)

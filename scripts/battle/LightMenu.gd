@@ -178,7 +178,9 @@ func _refresh_labels() -> void:
 		_labels[i].add_theme_color_override("font_color", Color(ink.r, ink.g, ink.b, alpha))
 
 
-func _unhandled_input(event: InputEvent) -> void:
+## **`_input`으로 받는다.** `_unhandled_input`은 UI가 먼저 먹고 남은 것만 오는데, 화면에
+## 버튼이나 막대가 하나라도 있으면 방향키를 그쪽이 가져가서 메뉴가 안 움직인다.
+func _input(event: InputEvent) -> void:
 	if not enabled or _anchors.is_empty():
 		return
 	# **빛줄기 아무 데나 눌러도 골라진다.** 글자 칸을 정확히 짚어야만 먹으면, 마우스로는
