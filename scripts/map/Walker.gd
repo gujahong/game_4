@@ -46,15 +46,21 @@ const VIGNETTE := "res://shaders/Vignette.gdshader"
 
 var _hero: Hero
 var _sleepers: Sleepers
+var _clutter: Clutter
 var _encounter: Vector2
 var _left := false   ## 이미 넘어갔는가. 한 프레임에 두 번 부르지 않으려는 것
+## 걸어 다니며 방만 보는 판(`-- --walk`). 적도 조우도 없다.
+var _peaceful := "--walk" in OS.get_cmdline_user_args()
 
 
 func _ready() -> void:
 	var floor_rect := _room.floor_rect_px().grow(-EDGE_PADDING)
 	# **통로 위에서만 걷는다.** 방이 사각형이 아니라 나선이라, 판정을 방에게 물어본다 -
-	# `Hero`는 방 모양을 몰라도 된다.
-	_hero = Hero.new(floor_rect, _room.is_walkable_px, _room.entrance_px())
+	# `Hero`는 방 모양을 몰라도 된다. 더미(`Clutter`)에도 막힌다(회원님) - 판정의 원천은
+	# 여전히 방이고, 여기서 그 판정에 더미를 곱해서 넘길 뿐이다.
+	_hero = Hero.new(floor_rect, func(p: Vector2) -> bool:
+		return _room.is_walkable_px(p) and (_clutter == null or not _clutter.blocks(p)),
+		_room.entrance_px())
 	# 그것은 나선 한가운데에서 마을을 지킨다.
 	_encounter = _room.heart_px()
 	_place()
@@ -67,6 +73,13 @@ func _ready() -> void:
 	_sleepers = $World/Sleepers
 	_sleepers.setup(_room)
 	_sleepers.woke.connect(_on_woke)
+
+	# 통로를 채우는 장식과 주울 것(가짜 더미·기름병·책장·떠다니는 책·금).
+	# **주인공보다 앞 순서에 끼운다** - 뒤에 붙이면 내 위에 그려진다.
+	_clutter = Clutter.new()
+	$World.add_child(_clutter)
+	$World.move_child(_clutter, _hero_sprite.get_index())
+	_clutter.setup(_room)
 
 	# 나는 늘 화면 한가운데에 있으므로 화면 필터의 빛은 가운데 고정이면 된다.
 	_screen.material.set_shader_parameter("light_position", Vector2(0.5, 0.5))
@@ -94,10 +107,14 @@ func _process(delta: float) -> void:
 	_place()
 
 	# 밟으면 부스럭거리다 일어선다.
-	_sleepers.check(_hero.at, delta)
+	# **`-- --walk`를 주면 아무것도 안 덤빈다**(회원님, 2026-08-18). 방 모양이나 배치를
+	# 눈으로 보려는데 몇 걸음마다 전투로 끌려가면 확인이 안 된다.
+	if not _peaceful:
+		_sleepers.check(_hero.at, delta)
+	_clutter.poll(_hero.at)
 
 	# 조우 자리에 닿으면 연출로 넘어간다.
-	if _hero.at.distance_to(_encounter) < ENCOUNTER_RANGE:
+	if not _peaceful and _hero.at.distance_to(_encounter) < ENCOUNTER_RANGE:
 		_left = true
 		get_tree().change_scene_to_file(ENCOUNTER_SCENE)
 

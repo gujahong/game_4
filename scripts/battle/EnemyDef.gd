@@ -18,11 +18,16 @@ class_name EnemyDef
 @export var watches: bool = false
 @export var watch_lines: Array[String] = []
 
-## 예고된 뒤 다음 턴에 날아오는 큰 공격. 방어로만 흘릴 수 있다.
-@export var heavy_damage: int = 15
-@export var heavy_chance: float = 0.3  ## 매 턴 큰 공격을 준비할 확률
+## **적은 매 턴 때리지 않는다**(회원님, 2026-08-18). 공격과 공격 사이에 이만큼 웅크린다 -
+## 이 박자가 전투의 숨구멍이다. 웅크리는 턴이 기름 붓고 말 거는 창이 된다.
+@export var pace: int = 1
+## 웅크릴 때 뜨는 문장(일반 공격의 예고). **등불이 밝아야 보인다** - 어두우면
+## "어둠 속에서 무언가 움직인다"만 뜬다. 예고를 보고 방어하면 받아넘긴다.
+@export_multiline var prep_line: String = ""
 
-## 큰 공격을 준비할 때 뜨는 문장. **등불이 환할 때만 보인다** - 어두우면 뭐가 오는지 모른다.
+## 웅크림이 큰 공격의 예고일 때가 있다. 그때는 `telegraph_line`이 대신 뜬다.
+@export var heavy_damage: int = 15
+@export var heavy_chance: float = 0.3  ## 웅크릴 때 큰 공격을 준비할 확률
 @export_multiline var telegraph_line: String = ""
 
 ## **말을 거는 방법들.** 무엇이 뜰지도, 그것이 무슨 일을 하는지도 적마다 다르다

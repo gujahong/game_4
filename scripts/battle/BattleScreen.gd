@@ -47,16 +47,17 @@ func _capture_brightness_and_quit() -> void:
 	await get_tree().create_timer(BattleStage.MOVE_FOR + 0.2).timeout
 	var battle: Battle = _stage.battle
 
-	while battle.lantern.level < Lantern.Level.BRIGHT:
-		battle.brighten()
-	for step in Lantern.NAMES.size():
-		var index: int = Lantern.NAMES.size() - 1 - step
+	# 밝기 단계는 이제 게이지에서 파생된다. 단계마다 게이지를 그 구간 값으로 직접 놓는다.
+	var bands: Array = [90, 60, 35, 10, 0]   # 환함 -> 꺼짐
+	for step in bands.size():
+		var index: int = bands.size() - 1 - step
+		battle.lantern.light = bands[step]
+		battle.state_changed.emit()
 		await _shoot("res://tools/_battle_%d.png" % index)
-		battle.dim()
 
 	# CRT를 끈 것과 켠 것. 어느 쪽이 나은지 눈으로 고르려고 같은 장면을 두 번 찍는다.
-	while battle.lantern.level < Lantern.Level.DIM:
-		battle.brighten()
+	battle.lantern.light = 35
+	battle.state_changed.emit()
 	await _shoot("res://tools/_crt_off.png")
 	crt.visible = true
 	await _shoot("res://tools/_crt_on.png")

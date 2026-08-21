@@ -114,13 +114,14 @@ var _hero_from := Vector2.ZERO
 var _lamp_from := Vector2.ZERO
 var _lamp_zoom_from := Vector2.ONE
 var _lantern: Sprite2D          ## 몸에서 떼어 받아 온 등불 그림. 이제 이것이 나다
+var _relic: Relic               ## 등불에서 꺼내는 빛의 보구. 처음 공격할 때 만든다
 var _lantern_from := Vector2.ZERO
 var _lantern_zoom_from := Vector2.ONE
 var _lantern_zoom_to := Vector2.ONE
 var _seated := false   ## 다 옮겨 앉았는가. 그 뒤로는 여기서 숨을 이어 쉰다
 var _jerking := false  ## 맞아서 밀려나는 중. 그동안은 숨을 안 쉰다(자리를 뺏으면 안 된다)
 var _glow := 1.0       ## 기름이 정하는 빛 세기. 여기에 불꽃 흔들림을 곱한다
-var _last_player_hp := 0   ## 마지막으로 화면에 보여준 체력. 줄었으면 맞은 것이다
+var _last_bruise := 0   ## 마지막으로 화면에 보여준 "맞아서 잃은 밝기"의 누적. 늘었으면 맞은 것이다
 var _last_enemy_hp := 0
 var _beats: Array = []     ## 아직 안 보여준 일들. 한 줄씩 사이를 두고 푼다
 var _outcome := ""         ## 전투가 끝났으면 그 결과. 다 풀고 나서 알린다
@@ -128,6 +129,7 @@ var _busy := false         ## 지난 턴을 푸는 중. 그동안은 아무것�
 var _standing := PackedInt32Array()   ## 지금 겨눌 수 있는 적들의 번호
 var _aiming := -1   ## 대상을 물은 행동(0 공격, 2 대화)
 var _aimed := 0     ## 고른 대상의 번호
+var _swung := false ## 이번 턴에 칼을 휘둘렀는가. 헛손질을 가려내는 데 쓴다
 
 
 ## world는 전투 내내 등불 밝기를 따라 어두워질 배경이다(없어도 된다).
@@ -143,7 +145,7 @@ func begin(enemy_defs: Array, enemy: Node2D, hero: Node2D, lamp: Node2D,
 
 	battle = Battle.new(enemy_defs)
 
-	_last_player_hp = battle.player_hp
+	_last_bruise = battle.bruised
 	_last_enemy_hp = _enemy_total()
 	battle.message.connect(_on_message)
 	battle.state_changed.connect(_refresh)
@@ -235,7 +237,7 @@ func _take_seat() -> void:
 	_hud.acted.connect(_on_acted)
 	_hud.targeted.connect(_on_targeted)
 	_hud.talked.connect(_on_talked)
-	_hud.lamp_shifted.connect(_on_lamp_shifted)
+	_hud.pour_asked.connect(_on_pour)
 
 	_hud.say("%s이(가) 앞을 막아섰다." % battle.display_name(0))
 	_refresh()
@@ -302,16 +304,16 @@ func _take_lantern() -> void:
 	_lantern.position = stood
 	_lantern.z_index = 3
 	_lantern_from = stood
-	# **처음부터 큰 그림을 쓴다**(회원님, 2026-08-18). 옮겨 앉고 나서 바꿔 끼우면 그 순간
-	# 도트가 갑자기 촘촘해지는 게 보인다 - 크기를 맞춰 놔도 눈에 띈다. 손에 들려 있을 때의
-	# 크기 그대로 시작해서 제 크기까지 자라기만 하면 된다.
+	# **전투 화면에 나타나는 순간부터 큰 그림, 큰 크기다**(회원님, 2026-08-18). 손 크기에서
+	# 자라게 해 봤더니 그 자람이 "등불이 바뀌는 것"으로 보였다. 카메라가 도는 것이면 크기는
+	# 처음부터 그 크기여야 맞다 - 갈아끼우는 순간은 어차피 암전/빛살이 가려 준다.
 	if ResourceLoader.exists(LANTERN_ART):
 		_lantern.texture = load(LANTERN_ART)
-		_lantern.scale = Vector2(zoom, zoom) * 0.5   # 큰 그림은 가로세로가 두 배다
+		_lantern.scale = Vector2.ONE * LANTERN_PIXELS
 	else:
 		_lantern.scale = Vector2(zoom, zoom)
 	_lantern_zoom_from = _lantern.scale
-	_lantern_zoom_to = Vector2.ONE * LANTERN_PIXELS
+	_lantern_zoom_to = _lantern.scale
 
 
 ## 등불 그림이 지금 떠 있는 자리. 빛(`LampGlow`)을 여기 붙인다.
@@ -333,6 +335,11 @@ func _on_acted(index: int) -> void:
 	# **겨눌 것이 있는 행동만 대상을 묻는다.** 공격과 대화는 누구에게 하는지가 다르지만,
 	# 막고 달아나는 데에는 상대가 하나든 여럿이든 고를 것이 없다.
 	if index == 0 or index == 2:
+		# **빛이 모자라면 공격이 잠긴다**(회원님). 대상을 고르기 전에 여기서 자른다 -
+		# 턴은 안 쓴다. 기름을 붓거나 버티는 수밖에 없다.
+		if index == 0 and not battle.lantern.can_swing():
+			_hud.say("빛이 모자라 칼이 서지 않는다.")
+			return
 		_aiming = index
 		_ask_target()
 		return
@@ -390,6 +397,7 @@ func _on_targeted(slot: int) -> void:
 		_hud.show_talks(ways)
 		return
 
+	_swung = true
 	await _resolve(func() -> void: battle.attack(_aimed))
 
 
@@ -420,7 +428,7 @@ func _resolve(act: Callable) -> void:
 ## 받아 둔 일들을 하나씩 푼다. **그것이 움직이기 전에 한 박자 쉰다** - 내 행동과 그 반응이
 ## 붙어 있으면 주고받은 것이 아니라 한꺼번에 처리된 것으로 보인다.
 func _play_beats() -> void:
-	var seen_player: int = _last_player_hp
+	var seen_bruise: int = _last_bruise
 	var seen_enemy: int = _last_enemy_hp
 
 	for i in _beats.size():
@@ -436,23 +444,39 @@ func _play_beats() -> void:
 		if line.begins_with(TURNS):
 			line = line.substr(TURNS.length())
 			_notch()
+
+		# 휘둘렀는데 첫 박자에 적 체력이 안 깎였다 - 헛손질이다. **글보다 몸이 먼저다**
+		# (회원님): 칼이 여느 공격처럼 끝까지 나왔다가 검기 직전에 흩어지고, 그다음에야
+		# "헛손질했다"가 뜬다. 글이 먼저 뜨면 빗나갈 것을 미리 알아 버린다.
+		if _swung and i == 0 and beat["enemy"] >= seen_enemy:
+			await _relic_fumble()
 		var showing: float = _hud.say(line)
 
 		# **누가 맞았는지는 체력이 말해 준다.** 규칙에 "때렸다" 같은 신호를 새로 달지 않는다.
 		if beat["enemy"] < seen_enemy:
+			# **등불에서 보구가 나와 닿는 것까지가 한 타다**(회원님, 2026-08-18). 적의 체력을
+			# 깎는 것은 나뿐이므로, 여기가 곧 내 공격이 닿는 자리다 - 닿기 전에 적이 먼저
+			# 아파하면 안 되니 날아가는 것을 다 기다린다.
+			await _relic_strike()
 			Sfx.play(self, Sfx.HIT, -9.0, randf_range(0.92, 1.1))
 			_enemy_struck(seen_enemy - int(beat["enemy"]))
-		if beat["player"] < seen_player:
+			# 이 타로 다 무너졌다 - 밀리고 떠는 것을 보이고 나서, 흩어져 사라진다.
+			if int(beat["enemy"]) <= 0:
+				await _wait(0.5)
+				await _enemy_fall()
+		if i == 0:
+			_swung = false
+		if beat["bruise"] > seen_bruise:
 			Sfx.play(self, Sfx.HURT, -7.0)
 			# **내가 맞으면 화면이 앓는다.** 세게 맞을수록 크게 흔들린다.
-			_quake(5.0 + 1.4 * float(seen_player - int(beat["player"])))
-			_lantern_struck(seen_player - int(beat["player"]))
-		seen_player = beat["player"]
+			_quake(5.0 + 1.4 * float(int(beat["bruise"]) - seen_bruise))
+			_lantern_struck(int(beat["bruise"]) - seen_bruise)
+		seen_bruise = beat["bruise"]
 		seen_enemy = beat["enemy"]
 
 		await _wait(showing + SAY_FOR)
 
-	_last_player_hp = seen_player
+	_last_bruise = seen_bruise
 	_last_enemy_hp = seen_enemy
 	_refresh()
 	if not _outcome.is_empty():
@@ -511,13 +535,12 @@ func _quake(strength: float) -> void:
 	for layer in layers:
 		shake.tween_property(layer, "offset", Vector2.ZERO, 0.07)
 
-func _on_lamp_shifted(step: int) -> void:
-	if step < 0:
-		Sfx.play(self, Sfx.DAMP, -13.0)
-		battle.dim()
-	else:
-		Sfx.play(self, Sfx.FLARE, -13.0)
-		battle.brighten()
+## 기름 붓기. **턴을 쓰는 행동이라** 공격과 같은 길(_resolve)로 간다.
+func _on_pour() -> void:
+	if _busy:
+		return
+	Sfx.play(self, Sfx.FLARE, -13.0)
+	await _resolve(func() -> void: battle.pour_oil())
 
 
 # --- 전투가 알려오는 것 ---
@@ -527,7 +550,7 @@ func _on_lamp_shifted(step: int) -> void:
 func _on_message(text: String) -> void:
 	_beats.append({
 		"text": text,
-		"player": battle.player_hp,
+		"bruise": battle.bruised,
 		"enemy": _enemy_total(),
 	})
 
@@ -544,7 +567,8 @@ func _refresh() -> void:
 
 	var lantern := battle.lantern
 	_glow = Lantern.LIGHT_INTENSITY[lantern.level]
-	var health := float(battle.player_hp) / float(Battle.PLAYER_MAX_HP)
+	# 밝기가 곧 체력이다. 다칠수록(= 어두워질수록) 불빛이 붉어진다.
+	var health := float(lantern.light) / float(Lantern.FULL)
 	var colour := UiStyle.lamp_colour(health)
 	_hud.show_state(battle, _glow, colour)
 
@@ -584,7 +608,7 @@ func _on_finished(outcome: String) -> void:
 	_outcome = outcome
 	_beats.append({
 		"text": CLOSING.get(outcome, ""),
-		"player": battle.player_hp,
+		"bruise": battle.bruised,
 		"enemy": _enemy_total(),
 	})
 
@@ -624,6 +648,13 @@ const STRUCK_FLASH := Color(1.0, 0.96, 0.90, 1.0)
 ## 맞았을 때 테두리가 파고드는 깊이와, 돌아올 자리(`EdgeBleed.hold`의 기본값).
 const TORN_TO := 0.18
 const TORN_BACK := 0.465
+## 다 죽어갈 때 가장자리가 쉬는 자리. **눈금 대신 몸이 게이지다**(회원님, 2026-08-18) -
+## 숫자는 안 보여주지만, 맞을 때마다 자글자글이 되돌아가는 자리가 조금씩 안쪽이 되어
+## 너덜너덜해지는 것은 보인다.
+const TORN_HURT := 0.3
+## 쓰러질 때. **흩어진다**(회원님) - 자글자글이 끝까지 파고들며 온몸이 점으로 날린다.
+const FALL_FOR := 1.1
+const FALL_SCATTER := 3.0   ## 흩어질 때 점이 옆에서 물어오는 폭(EdgeBleed의 scatter)
 const STRUCK_HOLD := 0.16
 const STRUCK_HOLD_MORE := 0.22
 const STRUCK_BACK_FOR := 0.32
@@ -648,8 +679,9 @@ func _enemy_struck(hurt: int = 6) -> void:
 		shaded.set_shader_parameter("hold", eaten)
 		var torn := create_tween()
 		torn.tween_interval(STRUCK_HOLD * force)
+		# **제자리가 아니라 다친 만큼 안쪽으로 돌아온다.** 이 한 줄이 적의 체력 게이지다.
 		torn.tween_method(func(v: float) -> void:
-			shaded.set_shader_parameter("hold", v), eaten, TORN_BACK, 0.3)
+			shaded.set_shader_parameter("hold", v), eaten, _torn_rest(), 0.3)
 
 	var jerk := create_tween()
 	jerk.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
@@ -664,6 +696,62 @@ func _enemy_struck(hurt: int = 6) -> void:
 
 	await jerk.finished
 	_jerking = false
+
+
+## 적이 다친 만큼 가장자리가 쉬는 자리. 멀쩡하면 TORN_BACK, 다 죽어가면 TORN_HURT다.
+func _torn_rest() -> float:
+	var full: int = 0
+	for def in battle.enemies:
+		full += def.max_hp
+	var ratio: float = float(_enemy_total()) / float(maxi(full, 1))
+	return lerpf(TORN_HURT, TORN_BACK, ratio)
+
+
+## 쓰러졌다. **흩어진다** - 가장자리를 갉아먹던 자글자글이 끝까지 파고들고, 점이 옆에서
+## 물어와 흩날리며, 종이가 바람에 날리듯 온몸이 사라진다.
+func _enemy_fall() -> void:
+	if _enemy == null:
+		return
+	_jerking = true   # 숨쉬기가 자리를 되돌리면 안 된다. 쓰러진 것은 다시 안 움직인다
+	var shaded := _enemy.material as ShaderMaterial
+	var fall := create_tween()
+	fall.set_parallel()
+	if shaded != null:
+		shaded.set_shader_parameter("scatter", FALL_SCATTER)
+		shaded.set_shader_parameter("shimmer", 24.0)
+		fall.tween_method(func(v: float) -> void:
+			shaded.set_shader_parameter("hold", v), _torn_rest(), 0.0, FALL_FOR)
+	# 자글자글이 중심까지 파고든 다음에야 남은 것이 옅어진다. 같이 빼면 그냥 페이드가 된다.
+	fall.tween_property(_enemy, "modulate:a", 0.0, FALL_FOR * 0.6).set_delay(FALL_FOR * 0.45)
+	await fall.finished
+
+
+## 등불에서 보구를 꺼내 날린다. 닿는 순간에 돌아온다.
+##
+## 보구는 등불빛과 같은 층(어둠 위)에 앉힌다 - 빛이 어둠에 가려지면 말이 안 된다.
+## 등불빛은 CanvasLayer 위지만 이 씬은 카메라가 안 움직여서 화면 좌표와 세상 좌표가 같다.
+func _relic_strike() -> void:
+	var aim: Vector2 = _enemy.position if _enemy != null else _enemy_seat
+	await _relic_ready().strike(_lamp_seat(), aim)
+
+
+## 헛손질. 칼이 뽑히다 말고 빛으로 흩어진다.
+func _relic_fumble() -> void:
+	await _relic_ready().fumble(_lamp_seat())
+
+
+func _relic_ready() -> Relic:
+	if _relic == null:
+		_relic = Relic.new()
+		var perch: Node = _lamp.get_parent() if _lamp != null else self
+		perch.add_child(_relic)
+	return _relic
+
+
+## 확인용. 보구가 나와서 닿는 것까지 통째로 굴린다(`-- --paper --hit`).
+func strike_for_show() -> void:
+	await _relic_strike()
+	_enemy_struck(10)
 
 
 ## 내가 맞았다. **등불이 흔들린다** - 이 화면에서 나를 나타내는 것이 등불이라, 등불이

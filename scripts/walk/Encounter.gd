@@ -680,10 +680,11 @@ func _build() -> void:
 	_lamp = LampGlow.new()
 	# 이 화면에는 등불 말고 색이 없어서, 맵보다 크고 촘촘해도 된다.
 	_lamp.glow_size = 224
-	# **이 화면의 등불은 흰빛이다.** 주황이면 빛살(흰색)과 나란히 놓였을 때 둘이 다른 빛으로
-	# 보인다. 같은 빛에서 나온 것이라야 갈라져 터지는 것이 말이 된다.
-	_lamp.core_color = Color(1.0, 0.93, 0.78, 0.95)
-	_lamp.edge_color = Color(1.0, 0.80, 0.52, 0.0)
+	# **등불 빛은 주황 계열로 통일한다**(회원님, 2026-08-18). 흰빛으로 갔더니 전투로
+	# 넘어가는 순간 주황(UiStyle.LAMP)으로 바뀌는 게 보였다 - 같은 등불이 두 색을 내면
+	# 다른 물건이 된다. 흰 것은 빛살(터지는 빛)과 칼뿐이다.
+	_lamp.core_color = Color(UiStyle.LAMP.r, UiStyle.LAMP.g, UiStyle.LAMP.b, 0.95)
+	_lamp.edge_color = Color(UiStyle.LAMP_EDGE.r, UiStyle.LAMP_EDGE.g, UiStyle.LAMP_EDGE.b, 0.0)
 	lamp_layer.add_child(_lamp)
 
 
@@ -1009,9 +1010,15 @@ func _shoot_and_quit() -> void:
 	if "--hit" in OS.get_cmdline_user_args():
 		await get_tree().create_timer(3.2).timeout
 		if _stage != null:
-			_stage._enemy_struck(10)
-		await get_tree().create_timer(0.12).timeout
+			_stage.strike_for_show()
+		# 칼이 나와서 베기까지 세 순간을 찍는다 - 뽑힌 것, 긋는 것, 벤 뒤.
+		await get_tree().create_timer(0.58).timeout
 		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("res://tools/_relic_rise.png")
+		await get_tree().create_timer(0.36).timeout
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("res://tools/_relic_fly.png")
+		await get_tree().create_timer(0.25).timeout
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png("res://tools/_battle_shot.png")
 		get_tree().quit()

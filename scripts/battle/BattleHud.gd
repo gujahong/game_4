@@ -20,7 +20,7 @@ class_name BattleHud
 signal acted(index: int)         ## 빛줄기 메뉴에서 고른 행동
 signal targeted(index: int)      ## 대상 고르기에서 고른 적(`alive()` 목록 안에서의 번호)
 signal talked(index: int)        ## 그 대상에게 거는 말길 번호
-signal lamp_shifted(step: int)   ## -1이면 어둡게, +1이면 밝게
+signal pour_asked()   ## 기름을 붓겠다 - 턴을 쓰는 행동이다
 
 ## 고를 것들. 빛줄기 넷이 **등불에서 부챗살로 퍼지고** 그 끝에 글자가 붙는다 - 한 줄로
 ## 늘어놓으면 목록이 되고, 갈라져야 등불에서 뻗어 나온 것으로 보인다.
@@ -178,8 +178,10 @@ func show_talks(names: Array) -> void:
 func _build_lamp_panel(origin: Vector2) -> void:
 	var at: Vector2 = (origin + PANEL_BELOW).round()
 
+	# **밝기를 올리고 내리는 손잡이는 없어졌다**(회원님, 2026-08-18). 밝기는 기름을 부어야만
+	# 오르는 자원이 됐다 - 여기 남는 것은 남은 병 수와 붓는 단추뿐이다.
 	_title = Label.new()
-	_title.text = "밝기"
+	_title.text = "기름"
 	# 픽셀 폰트는 네이티브(16)의 정수배로만 쓴다. 다음 칸이 32다.
 	KoreanFont.apply(_title, KoreanFont.NATIVE_SIZE * 2)
 	_title.add_theme_color_override("font_color", UiStyle.TEXT_DIM)
@@ -187,29 +189,29 @@ func _build_lamp_panel(origin: Vector2) -> void:
 	_title.position = at
 	# **폭을 재서 가운데를 맞춘다.** 글자와 버튼의 실제 크기는 글꼴과 테두리에 따라 달라서
 	# 숫자로 짐작하면 반드시 한쪽으로 틀어진다. 크기가 잡히면 그때 가운데로 민다.
+	# **화면 밖으로는 안 나간다.** "기름 x3"은 "밝기"보다 길어서, 등불 축에 가운데를
+	# 맞추면 왼쪽이 잘린다 - 잘리느니 오른쪽으로 밀린다.
 	_title.resized.connect(func() -> void:
-		_title.position.x = at.x - _title.size.x * 0.5)
+		_title.position.x = maxf(at.x - _title.size.x * 0.5, 4.0))
 	add_child(_title)
 
 	_row = HBoxContainer.new()
 	_row.position = at + Vector2(0.0, 34.0)
 	_row.resized.connect(func() -> void:
-		_row.position.x = at.x - _row.size.x * 0.5)
+		_row.position.x = maxf(at.x - _row.size.x * 0.5, 4.0))
 	_row.add_theme_constant_override("separation", 16)
 	add_child(_row)
 
-	for entry in [["+", 1], ["-", -1]]:
-		var button := Button.new()
-		button.text = entry[0]
-		KoreanFont.apply(button, KoreanFont.NATIVE_SIZE * 2)
-		UiStyle.style_flat_button(button)
-		button.focus_mode = Control.FOCUS_NONE  # 빛줄기 메뉴의 방향키 조작에 안 끼어들게
-		button.pressed.connect(func() -> void: lamp_shifted.emit(entry[1]))
-		_row.add_child(button)
-		_buttons.append(button)
+	var pour := Button.new()
+	pour.text = "붓는다"
+	KoreanFont.apply(pour, KoreanFont.NATIVE_SIZE * 2)
+	UiStyle.style_flat_button(pour)
+	pour.focus_mode = Control.FOCUS_NONE  # 빛줄기 메뉴의 방향키 조작에 안 끼어들게
+	pour.pressed.connect(func() -> void: pour_asked.emit())
+	_row.add_child(pour)
+	_buttons.append(pour)
 
-	# 남은 기름. **숫자 대신 눈금 하나다.** 이건 자원이 아니라 시간이라서, 얼마나 남았는지가
-	# 아니라 줄어들고 있다는 것만 보이면 된다.
+	# 남은 밝기. **숫자 대신 눈금 하나다.** 이것이 곧 체력이라, 줄어드는 것이 보이면 된다.
 	_oil_back = ColorRect.new()
 	_oil_back.color = Color(0.16, 0.14, 0.11, 0.85)
 	_oil_back.position = at + Vector2(-OIL_SIZE.x * 0.5, OIL_BELOW)
@@ -248,10 +250,14 @@ func show_state(battle: Battle, light: float, colour: Color) -> void:
 	_gloom = Lantern.BRIGHTNESS[lantern.level]
 	_apply_alpha()
 
-	var left: float = clampf(float(lantern.oil) / float(Lantern.STARTING_OIL), 0.0, 1.0)
+	var left: float = clampf(float(lantern.light) / float(Lantern.FULL), 0.0, 1.0)
 	_oil_fill.size = Vector2(roundf(OIL_SIZE.x * left), OIL_SIZE.y)
-	# 기름 눈금도 등불 색을 따른다. **다칠수록 붉어지므로** 이 한 줄이 체력까지 말해 준다.
+	# 밝기 눈금도 등불 색을 따른다. **다칠수록 붉어지므로** 이 한 줄이 체력까지 말해 준다.
 	_oil_fill.color = colour
+	# 남은 병 수는 이름에 붙인다. 빈손이면 단추도 흐려진다.
+	_title.text = "기름 x%d" % lantern.flasks
+	for button in _buttons:
+		button.disabled = lantern.flasks <= 0
 
 
 ## 불꽃이 흔들리는 몫(1이면 그대로). **밝기 자체와 갈라 둔다** - 밝기는 기름이 정하는 값이고

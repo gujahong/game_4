@@ -21,7 +21,7 @@ class_name ScreenEffectLayer
 
 ## **소리를 통째로 끈다**(회원님 요청, 2026-08-18). 다시 켜라고 하실 때까지 이대로 둔다 -
 ## 곳곳의 볼륨을 만지면 되돌릴 때 어디를 건드렸는지 못 찾는다. 여기 한 줄이면 다 멎는다.
-const MUTED := true
+const MUTED := false
 var _rect: ColorRect
 var _flash_layer: CanvasLayer
 var _flash_rect: ColorRect

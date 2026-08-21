@@ -33,6 +33,8 @@ damage_min = 3
 damage_max = 6
 heavy_damage = 11
 heavy_chance = 0.22
+pace = 1
+prep_line = "종이가 바스락거리며 낮게 웅크린다."
 battle_height = 0.796
 battle_at = Vector2(636, 226)
 

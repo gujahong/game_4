@@ -46,31 +46,39 @@ const META_PATH := "res://assets/tilesets/wood_chasm_metadata.json"
 ## 조우 화면이 뒷모습으로 북쪽을 향해 걸어 들어가는 그림이라, 여기서 옆으로 들어가면
 ## 넘어가는 순간 방향이 어긋난다(회원님 지적).
 
-## 방 크기(칸). 나선이라 정사각형이어야 한다. 32px 타일이니 44칸이면 1408px다.
-const COLS := 44
-const ROWS := 44
+## 방 크기(칸). 정사각형이어야 한다. 32px 타일이니 32칸이면 1024px다.
+## **44칸에서 줄였다**(회원님, 2026-08-18: "서고 너무 큰 것 같던데"). 나선일 때는 바깥
+## 고리 한 바퀴가 120칸이라 걷기만 하다 끝났는데, 지금은 입구에서 그것까지 22칸 직선이다.
+const COLS := 32
+const ROWS := 32
 
-## 고리들의 반지름(칸). 바깥에서 안으로.
-## 안쪽 고리를 8.5에서 밀었다 - 중심과 틈이 0.4칸뿐이라 사실상 붙어 있어서, 돌아가지 않고
-## 아무 데서나 들어가졌다(2026-08-15).
-const RINGS := [19.0, 14.0, 9.0]
-## 통로의 반너비(칸). 1.6이면 세 칸 남짓 - 등불 지름보다 좁아야 벽이 보인다.
-const WALK_HALF := 1.6
+## ### 중앙 홀 + 네 날개 (2026-08-18)
+##
+## 나선을 버렸다. **성당 회랑처럼 가운데 홀에서 네 방향으로 복도가 뻗고, 복도 끝마다 방이
+## 하나씩** 있는 십자 구조다(회원님이 고른 안).
+##
+## ```
+##            그것          북쪽 끝방. 서가를 다 읽어야 열린다
+##             │
+##      서가 ─ 홀 ─ 서가    동·서 끝방이 열람실. 서가 둘씩
+##             │
+##            입구          남쪽 끝방
+## ```
+##
+## 나선이 주던 "돌아 걸어야 한다"를 **길이 대신 갈래**로 바꾼 것이다 - 어디로 갈지는
+## 고르지만 오래 걷지는 않는다. 그리고 축이 직각이라 **오브젝트를 정면으로 세우기 좋다**:
+## 이 게임은 3/4 시점(타일셋이 `high top-down`)이라 가구가 전부 같은 방향을 봐야 하는데,
+## 복도가 가로세로면 벽을 따라 죽 세우면 그대로 맞는다.
 
-## 그것과 마주 서는 자리의 반지름(칸). **좁다** - 마을이 아니라 마주 서는 데다.
-const HEART := 4.5
-
-## 고리와 고리를 잇는 통로. 각도(라디안)와 반각.
-## **고리마다 자리가 돌아간다.** 같은 자리에 뚫으면 곧장 가로질러 들어가 버린다.
-const SPOKE_TURN := 2.3
-const SPOKE_HALF := 0.13
-
-## **마지막 통로만 남쪽에 못 박는다.** 여기로 들어가면 반드시 북쪽을 향해 걷게 되고,
-## 그래야 조우 화면(뒷모습으로 북쪽을 향해 걸어 들어감)과 방향이 이어진다.
-## 화면 좌표라 아래가 +y이므로 남쪽이 +PI/2다.
-const LAST_SPOKE := PI * 0.5
-## 마지막 통로는 조금 넓게. 여기만은 헤매게 하지 않는다 - 찾는 재미는 앞의 고리들이 이미 준다.
-const LAST_SPOKE_HALF := 0.30
+## 중앙 홀의 반너비(칸).
+const HALL_HALF := 4.5
+## 날개 복도의 반너비(칸). 등불 지름보다 좁아야 벽이 보인다.
+const WING_HALF := 1.6
+## 날개 복도가 끝나고 방이 시작되는 거리(칸).
+const WING_TO := 8.0
+## 날개 끝방의 한가운데까지의 거리와 그 방의 반너비(칸).
+const ROOM_AT := 11.0
+const ROOM_HALF := 3.0
 
 ## ### 상호작용하는 자리
 ##
@@ -81,11 +89,12 @@ const LAST_SPOKE_HALF := 0.30
 ## 그리고 안쪽 고리일수록 오래된 기록이라, 거기 있는 것이 그것의 이름에 가깝다.
 ## 들어오는 자리가 남쪽(각도 +PI/2 = 1.57)이므로 **거기서 멀찍이** 둔다. 처음에 둘이 입구
 ## 근처에 몰려 있어서 시작하자마자 밟혔다(2026-08-15).
+## 자리는 **한가운데에서 몇 칸 떨어졌는가**(칸 좌표)다. 화면 좌표라 아래가 +y다.
 const RECORDS := [
-	[0, -1.2],   # 바깥 고리 - 북서쪽. 들어오자마자 반 바퀴 돌아야 한다
-	[0, 0.2],    # 바깥 고리 - 동쪽
-	[1, 3.4],    # 가운데 고리 - 서쪽
-	[2, -0.4],   # 안쪽 고리 - 북동쪽. 제일 오래된 기록
+	Vector2(-12.0, -1.8),   # 서쪽 열람실 - 안쪽 벽
+	Vector2(-10.0, 1.8),    # 서쪽 열람실 - 문 가까이
+	Vector2(12.0, 1.8),     # 동쪽 열람실 - 안쪽 벽
+	Vector2(10.0, -1.8),    # 동쪽 열람실 - 문 가까이
 ]
 ## 서가 앞에 서면 반응하는 거리(칸).
 const RECORD_REACH := 1.8
@@ -97,18 +106,20 @@ const RECORD_REACH := 1.8
 ##
 ## 서가로 가는 길목에 둔다. **일부러 밟게 하려는 게 아니라 지나칠 수밖에 없게** 하는 것이라,
 ## 서가와 통로 사이 어중간한 자리가 맞다.
+## **복도 한가운데가 아니라 한쪽으로 치우쳐 둔다.** 복도 반너비가 1.6칸이고 밟는 거리가
+## 1.1칸이라, 반대쪽으로 비키면 안 깨우고 지나갈 수 있다 - 보고 나서 피할 수 있어야 한다.
 const SLEEPERS := [
-	[0, 1.9],    # 바깥 고리 - 입구에서 서쪽으로 돌면 첫 번째로 만난다
-	[0, -2.4],   # 바깥 고리 - 북서쪽 서가 가는 길
-	[1, 0.9],    # 가운데 고리
-	[2, 2.6],    # 안쪽 고리 - 여기까지 오면 이미 안다
+	Vector2(0.9, 6.4),     # 남쪽 복도 - 들어와서 처음 만난다
+	Vector2(-6.4, -0.9),   # 서쪽 복도 - 열람실 가는 길
+	Vector2(6.4, 0.9),     # 동쪽 복도 - 열람실 가는 길
+	Vector2(3.4, -3.4),    # 홀 북동 구석 - 그것에게 가는 문 앞
 ]
 ## 밟았다고 치는 거리(칸). 등불 반경보다 작아야 **보고 나서 피할 수 있다.**
 const SLEEPER_REACH := 1.1
 
-## ### 중심으로 가는 길은 잠겨 있다 (2026-08-15)
+## ### 북쪽 날개는 잠겨 있다 (2026-08-15)
 ##
-## **서가를 다 읽어야 마지막 통로가 열린다.** 그래야 기록이 장식이 아니라 관문이 된다.
+## **서가를 다 읽어야 그것에게 가는 길이 열린다.** 그래야 기록이 장식이 아니라 관문이 된다.
 ##
 ## 그리고 읽으려면 등불이 밝아야 하고, 등불은 기름을 태운다. **알아내는 데 값이 드는 구조**가
 ## 여기서 실제 규칙이 된다 - 예전에 적어둔 *"기름을 태워야 알 수 있다"* 그대로다.
@@ -145,9 +156,19 @@ func is_floor(cell: Vector2i) -> bool:
 	return _walkable(Vector2(cell) + Vector2(0.5, 0.5))
 
 
+## 타일 한 칸의 픽셀 크기. 벽을 그리는 쪽(`Clutter`)이 칸을 픽셀로 옮길 때 쓴다.
+func tile_px() -> int:
+	return _tile_px()
+
+
 ## **세상 좌표로 물어보는 것.** Hero가 이걸 쓴다 - 칸이 아니라 실제 발밑 자리로 묻는다.
+##
+## **그림과 판정을 같은 눈으로 잰다**(회원님, 2026-08-18: "갈 수 있을 것 같은데 못 가는
+## 곳이 있다"). 타일은 모서리 격자를 반올림해 깔리는데 판정만 연속 값으로 재면, 나무가
+## 그려진 가장자리 반 칸이 "보이는데 못 가는" 띠가 된다 - 걷기도 제일 가까운 모서리로
+## 판정해야 그림의 계단과 막히는 자리가 일치한다.
 func is_walkable_px(point: Vector2) -> bool:
-	return _walkable(point / float(_tile_px()))
+	return _walkable((point / float(_tile_px())).round())
 
 
 ## 방 전체를 감싸는 사각형. 카메라 한계와 종이 뿌리는 범위로 쓴다.
@@ -156,20 +177,27 @@ func floor_rect_px() -> Rect2:
 	return Rect2(Vector2.ZERO, Vector2(COLS * px, ROWS * px))
 
 
-## 마을 한가운데(세상 좌표). 그것이 지키는 자리이자 포탈·기름·기록물이 놓일 곳이다.
+## 그것이 지키는 자리(세상 좌표). **북쪽 끝방 한가운데다**(회원님, 2026-08-18:
+## "위쪽은 서가 말고 그것으로") - 남쪽 입구에서 곧장 북쪽을 향해 걸어 들어가게 되므로,
+## 조우 화면(뒷모습으로 북쪽을 향해 걷는 그림)과 방향이 이어진다.
 func heart_px() -> Vector2:
-	return _centre * float(_tile_px())
+	return (_centre + Vector2(0.0, -ROOM_AT)) * float(_tile_px())
 
 
-## 바깥 고리 위의 한 자리(세상 좌표). 관문에서 들어온 사람이 여기 선다.
+## 칸 좌표(한가운데에서 몇 칸)를 세상 픽셀로. 장식(`Clutter`)이 방 모양을 몰라도
+## 자리를 잡을 수 있게 내준다.
+func spot_px(offset: Vector2) -> Vector2:
+	return (_centre + offset) * float(_tile_px())
+
+
+## 남쪽 끝방 한가운데(세상 좌표). 관문에서 들어온 사람이 여기 선다.
 func entrance_px() -> Vector2:
-	var out: float = RINGS[0]
-	return (_centre + Vector2(0.0, out)) * float(_tile_px())
+	return (_centre + Vector2(0.0, ROOM_AT)) * float(_tile_px())
 
 
 ## 서가들의 자리(세상 좌표). 칸이 아니라 실제 좌표로 내준다 - 쓰는 쪽이 칸을 몰라도 되게.
 func record_spots_px() -> Array[Vector2]:
-	return _ring_spots(RECORDS)
+	return _spots(RECORDS)
 
 
 ## 이 자리에서 읽을 수 있는 서가가 있는가. 있으면 몇 번째인지, 없으면 -1.
@@ -184,7 +212,7 @@ func record_at(point: Vector2) -> int:
 
 ## 누워 있는 것들의 자리(세상 좌표).
 func sleeper_spots_px() -> Array[Vector2]:
-	return _ring_spots(SLEEPERS)
+	return _spots(SLEEPERS)
 
 
 ## 이 자리에서 깨어나는 것이 있는가. 있으면 몇 번째, 없으면 -1.
@@ -197,13 +225,12 @@ func sleeper_at(point: Vector2) -> int:
 	return -1
 
 
-## `[고리 번호, 각도]` 목록을 세상 좌표로 푼다. 서가와 적이 같은 방식이라 한 군데로 모은다.
-func _ring_spots(list: Array) -> Array[Vector2]:
+## 칸 좌표 목록을 세상 좌표로 푼다. 서가와 적이 같은 방식이라 한 군데로 모은다.
+func _spots(list: Array) -> Array[Vector2]:
 	var out: Array[Vector2] = []
 	var px := float(_tile_px())
 	for spot in list:
-		var a: float = spot[1]
-		out.append((_centre + Vector2(cos(a), sin(a)) * RINGS[spot[0]]) * px)
+		out.append((_centre + spot) * px)
 	return out
 
 
@@ -216,35 +243,28 @@ func _tile_px() -> int:
 ## 여기 한 곳만 고치면 방 모양이 통째로 바뀐다. 타일도 이동 판정도 전부 이 함수 하나를 본다.
 func _walkable(at: Vector2) -> bool:
 	var offset: Vector2 = at - _centre
-	var d: float = offset.length()
 
-	# 그것과 마주 서는 자리. **길이 열리기 전에는 여기도 못 간다** - 통로만 막고 안쪽을
-	# 남겨두면 지도에서 섬처럼 떠 보인다.
-	if d <= HEART:
-		return _opened
+	# 중앙 홀. 네모난 방 하나다.
+	if absf(offset.x) <= HALL_HALF and absf(offset.y) <= HALL_HALF:
+		return true
 
-	# 고리 위.
-	for r in RINGS:
-		if absf(d - r) <= WALK_HALF:
+	# 네 날개. 축마다 **복도 + 그 끝의 방**이다. 축이 넷이라 같은 계산을 방향만 바꿔 돌린다 -
+	# 축을 따라 나아간 만큼이 `along`, 축에서 옆으로 벗어난 만큼이 `across`다.
+	for dir in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
+		var along: float = offset.dot(dir)
+		if along <= 0.0:
+			continue
+		var across: float = absf(offset.x * dir.y - offset.y * dir.x)
+
+		# **북쪽 날개가 그것에게 가는 길이다.** 서가를 다 읽기 전에는 복도도 방도 없다 -
+		# 복도만 막고 방을 남겨두면 지도에서 섬처럼 떠 보인다.
+		if dir == Vector2.UP and not _opened:
+			continue
+
+		if along <= WING_TO and across <= WING_HALF:
 			return true
-
-	# 고리와 고리 사이를 잇는 통로. **고리마다 한 군데뿐이고 자리가 돌아간다.**
-	var angle: float = offset.angle()
-	var inner: float = HEART
-	for i in RINGS.size():
-		var outer: float = RINGS[RINGS.size() - 1 - i]
-		if d > inner - WALK_HALF and d < outer + WALK_HALF:
-			# i가 0인 것이 **중심으로 들어가는 마지막 통로**다. 이것만 남쪽에 고정하고,
-			# 서가를 다 읽기 전에는 아예 없다.
-			if i == 0 and not _opened:
-				inner = outer
-				continue
-			var spoke: float = LAST_SPOKE if i == 0 else float(i) * SPOKE_TURN
-			var half: float = LAST_SPOKE_HALF if i == 0 else SPOKE_HALF
-			# 각도는 한 바퀴 돌면 되돌아오므로 차이를 -PI~PI로 접어서 잰다.
-			if absf(wrapf(angle - spoke, -PI, PI)) <= half:
-				return true
-		inner = outer
+		if absf(along - ROOM_AT) <= ROOM_HALF and across <= ROOM_HALF:
+			return true
 
 	return false
 

@@ -34,24 +34,21 @@ func _init() -> void:
 			if not room._walkable(Vector2(c + 0.5, r + 0.5)):
 				continue
 			walkable += 1
+			# 그것이 지키는 자리는 **북쪽 끝방**이다(2026-08-18 구조 변경).
 			var centre: Vector2 = Vector2(c + 0.5, r + 0.5) - room._centre
-			var tone: Color = HEART if centre.length() <= room.HEART else WALK
+			var tone: Color = HEART if _in_heart(room, centre) else WALK
 			image.fill_rect(Rect2i(c * ZOOM, r * ZOOM, ZOOM, ZOOM), tone)
 
 	# 서가. 상호작용하는 자리라 크게 찍는다 - 한 칸이면 지도에서 안 보인다.
 	for spot in room.RECORDS:
-		var a: float = spot[1]
-		var at: Vector2 = room._centre + Vector2(cos(a), sin(a)) * room.RINGS[spot[0]]
-		_dot(image, at, RECORD)
+		_dot(image, room._centre + spot, RECORD)
 
 	# 누워 있는 것들.
 	for spot in room.SLEEPERS:
-		var a: float = spot[1]
-		var at: Vector2 = room._centre + Vector2(cos(a), sin(a)) * room.RINGS[spot[0]]
-		_dot(image, at, SLEEPER)
+		_dot(image, room._centre + spot, SLEEPER)
 
-	# 들어오는 자리. 여기서 안쪽으로 감겨 들어가야 한다.
-	_dot(image, room._centre + Vector2(0.0, room.RINGS[0]), START)
+	# 들어오는 자리. 남쪽 끝방이다.
+	_dot(image, room._centre + Vector2(0.0, room.ROOM_AT), START)
 
 	# **글자로도 찍는다.** 원격으로 폰에서 볼 때는 그림 파일이 안 넘어가서, 글자 격자가
 	# 유일하게 보이는 방법이다.
@@ -60,14 +57,12 @@ func _init() -> void:
 	print("  X  그것    B  서가    P  누워 있는 것    E  들어오는 자리")
 	var marks := {}
 	for spot in room.SLEEPERS:
-		var a: float = spot[1]
-		var at: Vector2 = room._centre + Vector2(cos(a), sin(a)) * room.RINGS[spot[0]]
+		var at: Vector2 = room._centre + spot
 		marks[Vector2i(int(at.x), int(at.y))] = "P"
 	for i in room.RECORDS.size():
-		var a: float = room.RECORDS[i][1]
-		var at: Vector2 = room._centre + Vector2(cos(a), sin(a)) * room.RINGS[room.RECORDS[i][0]]
+		var at: Vector2 = room._centre + room.RECORDS[i]
 		marks[Vector2i(int(at.x), int(at.y))] = "B"
-	var enter: Vector2 = room._centre + Vector2(0.0, room.RINGS[0])
+	var enter: Vector2 = room._centre + Vector2(0.0, room.ROOM_AT)
 	marks[Vector2i(int(enter.x), int(enter.y))] = "E"
 
 	for r in rows:
@@ -79,7 +74,7 @@ func _init() -> void:
 				line += marks[cell]
 			elif not room._walkable(here):
 				line += "."
-			elif (here - room._centre).length() <= room.HEART:
+			elif _in_heart(room, here - room._centre):
 				line += "X"
 			else:
 				line += "#"
@@ -98,3 +93,8 @@ func _dot(image: Image, at: Vector2, tone: Color) -> void:
 	var x: int = (int(at.x) - 1) * ZOOM
 	var y: int = (int(at.y) - 1) * ZOOM
 	image.fill_rect(Rect2i(x, y, ZOOM * 3, ZOOM * 3), tone)
+
+
+## 이 자리(한가운데 기준 칸 좌표)가 그것이 지키는 북쪽 끝방 안인가.
+func _in_heart(room, offset: Vector2) -> bool:
+	return absf(offset.x) <= room.ROOM_HALF and absf(offset.y + room.ROOM_AT) <= room.ROOM_HALF
