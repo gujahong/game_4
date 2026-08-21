@@ -5,9 +5,14 @@ class_name Battle
 ## 대사 시스템이 `DialogueController`(로직)와 `DialogueUI`(화면)로 나뉜 것과 같은 구조다.
 ## 그래서 화면을 통째로 갈아엎어도 여기는 손댈 일이 없다.
 ##
-## 한 턴은 이렇게 흐른다.
-##   플레이어 행동 → 기름 소모 → 살아 있는 적들이 차례로 행동(+ 큰 공격 예고) → 반복
-## 등불 밝기를 바꾸는 것은 행동이 아니라서 이 흐름에 끼지 않는다.
+## 한 턴은 이렇게 흐른다(2026-08-21에 회원님이 다시 정하신 것, `전투.md`).
+##   플레이어 행동(마나를 낸다) → 눈금이 마른다 → 적들이 차례로 행동 → 마나가 다시 찬다
+##
+## **등불이 마나다.** 매 턴 눈금만큼 마나가 나오고, 안 쓴 것은 사라진다. 눈금은 2턴마다
+## 하나씩 마르므로 **전투가 길어지면 반드시 진다** — 따로 타이머를 안 건다.
+##
+## **패배 조건은 체력 0뿐이다.** 눈금이 0이 되어도 지지 않는다 — 주먹질만 남을 뿐이고,
+## 그러면 저절로 밀린다. 규칙을 하나 안 늘리고 압박만 남는 자리다.
 ##
 ## **적은 처음부터 여럿을 받는다**(2026-08-14). 지금 서고에서 마주치는 것은 하나뿐이지만,
 ## 하나만 담을 수 있게 짜 두면 여럿이 나오는 순간 이 파일을 다시 뒤집어야 한다. 목록으로
@@ -19,12 +24,22 @@ signal finished(outcome: String)      ## "victory" / "defeat" / "talked" / "fled
 
 const PLAYER_DAMAGE_MIN := 6
 const PLAYER_DAMAGE_MAX := 10
+## **마나가 모자라면 주먹질이 된다**(회원님) — 아무것도 못 하게 막지 않는다. 약할 뿐이다.
+const FIST_DAMAGE_MIN := 2
+const FIST_DAMAGE_MAX := 4
+
+## 행동마다의 마나값. ⚠️ 초안이다(`전투.md` 3장) — 손으로 굴려보고 고친다.
+const COST_ATTACK := 2
+const COST_GUARD := 1
+## 대화·기름·도주는 마나를 안 먹는다. **턴은 쓴다** — 값은 시간으로 치른다.
+const COST_TALK := 0
 
 var enemies: Array[EnemyDef] = []
 var hps: PackedInt32Array = PackedInt32Array()   ## 적마다의 남은 체력. `enemies`와 같은 순서다
 var lantern := Lantern.new()
-## 적에게 맞아 잃은 밝기의 **누적**. 밝기는 칼질·시간으로도 내려가므로, 화면이 "맞았다"만
-## 골라 떨게 하려면 맞은 몫을 따로 세어 줘야 한다.
+## 적에게 맞아 잃은 체력의 **누적**. 화면이 이 값이 오르는 것만 보고 떤다
+## (`BattleStage._play_beats`). 체력이 따로 생긴 지금도 누적이 더 쓰기 편하다 —
+## 화면은 "얼마나 남았나"가 아니라 "방금 얼마나 잃었나"를 알아야 한다.
 var bruised: int = 0
 var is_over: bool = false
 
@@ -75,6 +90,9 @@ func enemy_condition(target: int) -> String:
 
 ## 기름 한 병을 붓는다. **턴을 쓰는 행동이다**(회원님) - 공격 대신 붓는 것이라,
 ## "지금 부을까 버틸까"가 턴의 선택이 된다. 빈손이면 턴을 안 뺏는다.
+##
+## **이번 턴 마나는 안 오른다**(`Lantern.pour`). 눈금만 오르고 마나는 다음 턴부터 나오므로
+## "지금은 손해, 다음 턴부터 이득"이 성립한다 — 하스스톤의 램프와 같은 판단이다.
 func pour_oil() -> void:
 	if is_over:
 		return
@@ -82,26 +100,30 @@ func pour_oil() -> void:
 		message.emit("기름병이 비었다.")
 		state_changed.emit()
 		return
-	message.emit("기름을 부었다. 불이 차오른다.")
+	message.emit("기름을 부었다. 눈금이 차오른다.")
 	_end_player_turn()
 
 
+## 이번에 칼이 설 것인가. **화면이 미리 알아야 한다** - 마나가 모자라면 칼 연출이 아니라
+## 주먹질이라, 뽑히는 칼을 그려 놓고 주먹 소리를 낼 수는 없다.
+func swings() -> bool:
+	return lantern.can_pay(COST_ATTACK)
+
+
 ## target은 `alive()`가 돌려준 번호 중 하나다.
+##
+## **마나가 모자라도 막지 않는다**(회원님). 전에는 "빛이 모자라 칼이 서지 않는다"로 턴을
+## 돌려줬는데, 이제는 **주먹질이 된다** - 약할 뿐이지 아무것도 못 하는 것은 아니다.
+## 눈금 0이 패배가 아닌 이유가 이것이다.
 func attack(target: int) -> void:
 	if is_over or target < 0 or target >= hps.size() or hps[target] <= 0:
 		return
-	# **빛이 모자라면 칼이 아예 안 선다**(회원님). 화면이 미리 잠그지만 여기서도 막는다 -
-	# 턴을 안 뺏는다. 못 한 것이지 헛한 것이 아니다.
-	if not lantern.can_swing():
-		message.emit("빛이 모자라 칼이 서지 않는다.")
-		state_changed.emit()
-		return
-	# 휘두르는 값. **맞든 빗나가든 빛은 탄다** - 칼 자체가 빛으로 만든 것이니까.
-	lantern.swing()
+	var fist: bool = not lantern.pay(COST_ATTACK)
 	if randf() < lantern.player_hit():
-		var dealt := randi_range(PLAYER_DAMAGE_MIN, PLAYER_DAMAGE_MAX)
+		var dealt: int = randi_range(FIST_DAMAGE_MIN, FIST_DAMAGE_MAX) if fist \
+			else randi_range(PLAYER_DAMAGE_MIN, PLAYER_DAMAGE_MAX)
 		hps[target] = maxi(hps[target] - dealt, 0)
-		message.emit("칼이 파고들었다. (%d)" % dealt)
+		message.emit(("맨손으로 내리쳤다. (%d)" if fist else "칼이 파고들었다. (%d)") % dealt)
 		if hps[target] <= 0:
 			message.emit("%s이(가) 무너져 내렸다." % enemies[target].display_name)
 	else:
@@ -109,8 +131,13 @@ func attack(target: int) -> void:
 	_end_player_turn()
 
 
+## **자세를 잡는 데도 빛이 든다.** 못 내면 턴을 안 뺏는다 - 못 한 것이지 헛한 것이 아니다.
 func guard() -> void:
 	if is_over:
+		return
+	if not lantern.pay(COST_GUARD):
+		message.emit("빛이 모자라 자세가 잡히지 않는다.")
+		state_changed.emit()
 		return
 	_guarding = true
 	message.emit("몸을 낮추고 다음 수를 기다렸다.")
@@ -183,18 +210,23 @@ func _end_player_turn() -> void:
 		_finish("victory")
 		return
 
-	# 시간이 태우는 몫. **등불이 꺼지면 진다**(회원님) - 밝기가 곧 목숨이다.
-	lantern.burn()
-	if lantern.is_out():
-		message.emit("등불이 꺼졌다.")
-		_finish("defeat")
-		return
+	# **시간이 눈금을 말린다.** 아무것도 안 해도 어두워진다 - 두 턴에 하나씩이라,
+	# 줄어드는 그 턴에만 한 줄 알린다. 매 턴 알리면 잔소리가 된다.
+	var was: int = lantern.marks
+	lantern.tick()
+	if lantern.marks < was:
+		message.emit("불이 한 눈금 잦아들었다.")
+		if lantern.is_out():
+			message.emit("등불이 꺼졌다. 손에 남은 것이 없다.")
+
 	for i in alive():
 		_enemy_turn(i)
-		if lantern.is_out():
-			message.emit("등불이 꺼졌다.")
+		if lantern.is_dead():
 			_finish("defeat")
 			return
+
+	# **마나가 다시 찬다. 남은 것은 사라진다**(회원님) - 이월이 없어야 매 턴 다 쓰게 된다.
+	lantern.refill()
 	_guarding = false
 	state_changed.emit()
 
@@ -241,20 +273,27 @@ func _enemy_turn(index: int) -> void:
 		message.emit("%s 받아넘겼다! %s이(가) 크게 휘청인다." % [doing, enemy.display_name])
 		_flinching[index] = true
 		return
+	# 큰 공격만 눈금을 깎는다. 예고를 못 읽고 맞으면 두 번 아프다.
 	_strike(enemy.heavy_damage if heavy else randi_range(enemy.damage_min, enemy.damage_max),
-		doing)
+		doing, enemy.drain if heavy else 0)
 
 
-func _strike(amount: int, description: String) -> void:
+func _strike(amount: int, description: String, drain: int = 0) -> void:
 	# 예고까지 하고 온 공격이라 웬만하면 맞는다. 피하는 길은 주사위가 아니라 방어다.
 	if randf() >= lantern.enemy_hit():
 		message.emit("%s 빗나갔다." % description)
 		return
 	var taken := amount
-	# 적의 타격은 **불을 갉는다.** 몸이 따로 없다 - 등불이 나다.
+	# **몸이 다친다.** 전에는 밝기가 곧 체력이라 등불을 갉았는데, 둘을 나눈 지금은
+	# 여느 공격이 몸만 친다.
 	lantern.hurt(taken)
 	bruised += taken
 	message.emit("%s (%d)" % [description, taken])
+	# **눈금까지 깎는 공격이 따로 있다**(`EnemyDef.drain`). 맞은 그 자리에서 어두워진다 -
+	# 시간이 아니라 상대가 내 빛을 꺼뜨리는 자리라 훨씬 아프다.
+	if drain > 0 and lantern.marks > 0:
+		lantern.drain(drain)
+		message.emit("불이 휘청였다. 눈금이 깎였다.")
 
 
 func _finish(outcome: String) -> void:

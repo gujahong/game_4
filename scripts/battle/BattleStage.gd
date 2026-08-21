@@ -119,6 +119,8 @@ var _lantern_from := Vector2.ZERO
 var _lantern_zoom_from := Vector2.ONE
 var _lantern_zoom_to := Vector2.ONE
 var _seated := false   ## 다 옮겨 앉았는가. 그 뒤로는 여기서 숨을 이어 쉰다
+## 앉은 시각(초). 숨·떠오름의 위상을 여기서부터 센다 - `_process` 주석 참고.
+var _seated_at := 0.0
 var _jerking := false  ## 맞아서 밀려나는 중. 그동안은 숨을 안 쉰다(자리를 뺏으면 안 된다)
 var _glow := 1.0       ## 기름이 정하는 빛 세기. 여기에 불꽃 흔들림을 곱한다
 var _last_bruise := 0   ## 마지막으로 화면에 보여준 "맞아서 잃은 밝기"의 누적. 늘었으면 맞은 것이다
@@ -227,6 +229,7 @@ func _take_seat() -> void:
 		_hero.visible = false   # 이미 화면 밖이다. 그려 봐야 헛일이라 여기서 끈다
 	# 등불 그림은 **처음부터 큰 것**을 쓴다(`_take_lantern`). 예전에는 여기서 바꿔 끼웠는데,
 	# 크기를 맞춰 놔도 도트가 갑자기 촘촘해지는 것이 눈에 띄었다.
+	_seated_at = float(Time.get_ticks_msec()) * 0.001
 	_seated = true
 
 	_hud = BattleHud.new()
@@ -256,7 +259,11 @@ func _take_seat() -> void:
 func _process(_delta: float) -> void:
 	if not _seated:
 		return
-	var now: float = float(Time.get_ticks_msec()) * 0.001
+	# **앉은 순간을 0으로 잡는다**(2026-08-21). 전에는 켠 시각을 그대로 썼는데, 그러면
+	# 자리를 다 잡는 프레임에 `sin(now)`이 하필 아무 값이나 되어 **등불과 적이 한 번 툭
+	# 옮겨 앉았다.** 빛무리도 등불을 따라가니 화면 전체가 덜컹였고, 그게 회원님이 말씀하신
+	# "전환이 뚝 하고 끊긴다"였다 - 여기서부터 0으로 시작하면 제자리에서 조용히 숨을 쉰다.
+	var now: float = float(Time.get_ticks_msec()) * 0.001 - _seated_at
 	if _enemy != null and not _jerking:
 		var lift := 0.0
 		if battle.enemies.is_empty() or not ("breathes" in battle.enemies[0]) or battle.enemies[0].breathes:
@@ -335,11 +342,8 @@ func _on_acted(index: int) -> void:
 	# **겨눌 것이 있는 행동만 대상을 묻는다.** 공격과 대화는 누구에게 하는지가 다르지만,
 	# 막고 달아나는 데에는 상대가 하나든 여럿이든 고를 것이 없다.
 	if index == 0 or index == 2:
-		# **빛이 모자라면 공격이 잠긴다**(회원님). 대상을 고르기 전에 여기서 자른다 -
-		# 턴은 안 쓴다. 기름을 붓거나 버티는 수밖에 없다.
-		if index == 0 and not battle.lantern.can_swing():
-			_hud.say("빛이 모자라 칼이 서지 않는다.")
-			return
+		# **이제 공격을 안 잠근다**(회원님, 2026-08-21). 마나가 모자라면 칼 대신
+		# 주먹질이 나갈 뿐이라, 여기서 막으면 아무것도 못 하는 턴이 생긴다.
 		_aiming = index
 		_ask_target()
 		return
@@ -397,7 +401,9 @@ func _on_targeted(slot: int) -> void:
 		_hud.show_talks(ways)
 		return
 
-	_swung = true
+	# **칼이 설 때만 칼 연출이다.** 마나가 모자라면 주먹질이라, 뽑히는 칼을 그려 놓고
+	# 주먹으로 때릴 수는 없다. 규칙에 미리 물어본다(`Battle.swings`).
+	_swung = battle.swings()
 	await _resolve(func() -> void: battle.attack(_aimed))
 
 
@@ -457,7 +463,11 @@ func _play_beats() -> void:
 			# **등불에서 보구가 나와 닿는 것까지가 한 타다**(회원님, 2026-08-18). 적의 체력을
 			# 깎는 것은 나뿐이므로, 여기가 곧 내 공격이 닿는 자리다 - 닿기 전에 적이 먼저
 			# 아파하면 안 되니 날아가는 것을 다 기다린다.
-			await _relic_strike()
+			#
+			# **주먹질이면 칼을 안 뽑는다**(2026-08-21). 마나가 모자라 맨손으로 친 것이라
+			# 빛이 나올 데가 없다 - 소리와 흔들림만 남는다.
+			if _swung:
+				await _relic_strike()
 			Sfx.play(self, Sfx.HIT, -9.0, randf_range(0.92, 1.1))
 			_enemy_struck(seen_enemy - int(beat["enemy"]))
 			# 이 타로 다 무너졌다 - 밀리고 떠는 것을 보이고 나서, 흩어져 사라진다.
@@ -567,8 +577,9 @@ func _refresh() -> void:
 
 	var lantern := battle.lantern
 	_glow = Lantern.LIGHT_INTENSITY[lantern.level]
-	# 밝기가 곧 체력이다. 다칠수록(= 어두워질수록) 불빛이 붉어진다.
-	var health := float(lantern.light) / float(Lantern.FULL)
+	# **불빛 색이 체력이다.** 밝기와 체력을 나눈 뒤로(2026-08-21) 둘이 따로 논다 —
+	# 크기는 눈금이 정하고 색은 몸이 정한다. 다칠수록 붉어진다.
+	var health := float(lantern.hp) / float(Lantern.MAX_HP)
 	var colour := UiStyle.lamp_colour(health)
 	_hud.show_state(battle, _glow, colour)
 

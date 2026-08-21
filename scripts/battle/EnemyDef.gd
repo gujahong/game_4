@@ -29,6 +29,12 @@ class_name EnemyDef
 @export var heavy_damage: int = 15
 @export var heavy_chance: float = 0.3  ## 웅크릴 때 큰 공격을 준비할 확률
 @export_multiline var telegraph_line: String = ""
+## **큰 공격이 등불 눈금까지 깎는가**(2026-08-21). 0이면 몸만 다친다.
+##
+## 시간이 마르는 것과는 아프기가 다르다 - 시간은 두 턴에 하나씩 예고 없이 주지만, 이것은
+## **상대가 내 빛을 꺼뜨리는 것**이라 다음 턴에 쓸 수 있는 것이 그 자리에서 줄어든다.
+## 예고를 읽고 방어하면 안 맞으므로, 이 값이 큰 적일수록 밝게 다녀야 한다.
+@export var drain: int = 0
 
 ## **말을 거는 방법들.** 무엇이 뜰지도, 그것이 무슨 일을 하는지도 적마다 다르다
 ## (`TalkOption`). 여기가 비면 대화가 아예 안 뜬다 - 말이 안 통하는 것도 있어야 한다.

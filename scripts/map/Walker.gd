@@ -47,6 +47,7 @@ const VIGNETTE := "res://shaders/Vignette.gdshader"
 var _hero: Hero
 var _sleepers: Sleepers
 var _clutter: Clutter
+var _records: Records
 var _encounter: Vector2
 var _left := false   ## 이미 넘어갔는가. 한 프레임에 두 번 부르지 않으려는 것
 ## 걸어 다니며 방만 보는 판(`-- --walk`). 적도 조우도 없다.
@@ -59,7 +60,9 @@ func _ready() -> void:
 	# `Hero`는 방 모양을 몰라도 된다. 더미(`Clutter`)에도 막힌다(회원님) - 판정의 원천은
 	# 여전히 방이고, 여기서 그 판정에 더미를 곱해서 넘길 뿐이다.
 	_hero = Hero.new(floor_rect, func(p: Vector2) -> bool:
-		return _room.is_walkable_px(p) and (_clutter == null or not _clutter.blocks(p)),
+		return _room.is_walkable_px(p) \
+			and (_clutter == null or not _clutter.blocks(p)) \
+			and (_records == null or not _records.blocks(p)),
 		_room.entrance_px())
 	# 그것은 나선 한가운데에서 마을을 지킨다.
 	_encounter = _room.heart_px()
@@ -81,6 +84,16 @@ func _ready() -> void:
 	$World.move_child(_clutter, _hero_sprite.get_index())
 	_clutter.setup(_room)
 
+	# **읽을 수 있는 서가.** 넷을 다 읽어야 북쪽이 열린다 - 이 방의 핵심 장치다.
+	_records = Records.new()
+	$World.add_child(_records)
+	$World.move_child(_records, _hero_sprite.get_index())
+	_records.setup(_room)
+	_records.all_read.connect(_on_all_read)
+
+	# 대사창. 서고에는 없었다 - 서가를 읽게 되면서 필요해졌다.
+	add_child(DialogueUI.new())
+
 	# 나는 늘 화면 한가운데에 있으므로 화면 필터의 빛은 가운데 고정이면 된다.
 	_screen.material.set_shader_parameter("light_position", Vector2(0.5, 0.5))
 
@@ -100,11 +113,19 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if _left:
 		return
+
+	# **글을 읽는 동안은 안 걷는다.** 대사창이 떠 있는데 발이 움직이면 둘 다 어수선해진다.
+	# 서가 판정은 계속 돈다 - 읽기가 끝나는 것을 여기서 알아야 하기 때문이다.
+	if _records.busy():
+		_records.poll(_hero.at)
+		return
+
 	_hero.step(Vector2(
 		Input.get_axis("ui_left", "ui_right"),
 		Input.get_axis("ui_up", "ui_down")
 	), delta)
 	_place()
+	_records.poll(_hero.at)
 
 	# 밟으면 부스럭거리다 일어선다.
 	# **`-- --walk`를 주면 아무것도 안 덤빈다**(회원님, 2026-08-18). 방 모양이나 배치를
@@ -117,6 +138,17 @@ func _process(delta: float) -> void:
 	if not _peaceful and _hero.at.distance_to(_encounter) < ENCOUNTER_RANGE:
 		_left = true
 		get_tree().change_scene_to_file(ENCOUNTER_SCENE)
+
+
+## 서가 넷을 다 읽었다. **북쪽이 열린다** - 그것에게 가는 길이다.
+##
+## 길이 열리는 것을 글로도 알린다. 화면만 바뀌면 뭐가 열렸는지 모르고, 열린 자리가
+## 등불 반경 밖이면 아예 안 보인다.
+func _on_all_read() -> void:
+	_room.open_way()
+	Sfx.play(self, Sfx.FLARE, -10.0)
+	# 한 프레임 미룬다 - 방금 끝난 대사가 닫히는 중에 새 대사를 밀어 넣으면 겹친다.
+	Dialogue.play_scene.call_deferred(RecordText.opened_scene())
 
 
 ## 종이 더미가 탑이 됐다. **전투는 투시선 복도로 가서 한다.**
