@@ -156,6 +156,11 @@ func _ready() -> void:
 	_sleeper_spots = _spots(SLEEPERS)
 
 
+## 이 칸이 바닥인가. 벽을 세우는 쪽(`Clutter`)이 칸 단위로 훑을 때 쓴다.
+func is_floor(cell: Vector2i) -> bool:
+	return _walkable(Vector2(cell) + Vector2(0.5, 0.5))
+
+
 ## 타일 한 칸의 픽셀 크기. 벽을 그리는 쪽(`Clutter`)이 칸을 픽셀로 옮길 때 쓴다.
 func tile_px() -> int:
 	return _tile_px()
