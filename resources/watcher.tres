@@ -29,16 +29,16 @@ lines = Array[String](["칼끝을 고리 쪽으로 들어 올렸다.", "물러�
 needs_light = false
 dark_line = ""
 effect = 0
-effect_line = "그 것은 그저 본다. 위협이 닿을 자리가 없다."
+effect_line = "그것은 그저 본다. 위협이 닿을 자리가 없다."
 
 [resource]
 script = ExtResource("1")
-display_name = "그 것"
+display_name = "그것"
 texture = ExtResource("2")
 max_hp = 44
 aura = true
 watches = true
-watch_lines = Array[String](["그 것은 이쪽을 보고 있다.", "눈꺼풀 하나 깜빡이지 않는다.", "[돈다]고리가 한 칸 돌아간다. 그뿐이다.", "아무 일도 일어나지 않는다. 그것이 견디기 어렵다.", "빛이 닿는 데까지 눈이 따라온다."])
+watch_lines = Array[String](["그것은 이쪽을 보고 있다.", "눈꺼풀 하나 깜빡이지 않는다.", "[돈다]고리가 한 칸 돌아간다. 그뿐이다.", "아무 일도 일어나지 않는다. 그것이 견디기 어렵다.", "빛이 닿는 데까지 눈이 따라온다."])
 damage_min = 0
 damage_max = 0
 heavy_damage = 0

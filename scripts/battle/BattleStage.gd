@@ -171,7 +171,7 @@ func _slide(enemy: Node2D) -> void:
 	_enemy_zoom_to = enemy.scale
 	if enemy is Sprite2D and (enemy as Sprite2D).texture != null:
 		var tall: float = float((enemy as Sprite2D).texture.get_size().y)
-		# **크기는 적이 정한다.** 그 것은 넘쳐야 하지만 길에서 만나는 것까지 그러면 다
+		# **크기는 적이 정한다.** 그것은 넘쳐야 하지만 길에서 만나는 것까지 그러면 다
 		# 똑같이 커 보인다. 리소스에 안 적혀 있으면 예전 값을 쓴다.
 		var height: float = ENEMY_HEIGHT
 		if not battle.enemies.is_empty() and "battle_height" in battle.enemies[0]:

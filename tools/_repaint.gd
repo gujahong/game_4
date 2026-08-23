@@ -37,7 +37,7 @@ const SKIP := ["_raw", "_before_palette", "anchor_64", "/raw/", "/copy/", "/empt
 const RICH := [
 	"paper.png",           # 종이로 된 것 (512x512)
 	"paper_stood.png",     # 그 일어선 자세
-	"watcher.png",         # 그 것 (656x656)
+	"watcher.png",         # 그것 (656x656)
 	"hollow_armour.png",   # 갑옷 (160x208)
 ]
 

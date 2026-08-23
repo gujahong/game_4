@@ -1,7 +1,7 @@
 extends SceneTree
 const LIST := [
 	["새 주인공", "res://tools/_new/south.png"],
-	["그 것", "res://assets/_before_palette/enemies/watcher.png"],
+	["그것", "res://assets/_before_palette/enemies/watcher.png"],
 	["종이로 된 것", "res://assets/_before_palette/enemies/paper.png"],
 	["바닥 타일셋", "res://assets/_before_palette/tilesets/wood_chasm_image.png"],
 ]
