@@ -50,7 +50,12 @@ var _homes: Array[Vector2] = []   ## 떨기 전의 제자리
 var _rise: Array[Texture2D] = []
 var _awake := -1        ## 지금 일어서는 중인 것. -1이면 없다
 var _rise_time := 0.0
-var _beaten := {}       ## 이미 잡은 것은 다시 안 세운다
+## 이미 잡은 것은 다시 안 세운다.
+##
+## **`static`이라 씬을 갈아타도 남는다**(2026-08-23). 전에는 인스턴스 변수라
+## 전투에서 돌아오면 방이 새로 지어지면서 잡은 것이 도로 누워 있었다 —
+## 같은 것과 무한히 다시 싸우게 된다. `Encounter.pending_enemy`가 쓰는 것과 같은 수법이다.
+static var beaten := {}
 
 
 func setup(room: TilesetRoom) -> void:
@@ -65,6 +70,8 @@ func setup(room: TilesetRoom) -> void:
 		var sprite := Sprite2D.new()
 		sprite.texture = pile
 		sprite.position = at.round()
+		# **잡고 돌아온 것은 처음부터 안 보인다.**
+		sprite.visible = not beaten.has(_sprites.size())
 		add_child(sprite)
 		_sprites.append(sprite)
 		_homes.append(sprite.position)
@@ -86,7 +93,7 @@ func check(hero_at: Vector2, delta: float) -> void:
 		if _rise_time >= SHAKE_FOR + _rise_seconds() + HOLD_AFTER:
 			var index := _awake
 			_awake = -1
-			_beaten[index] = true
+			beaten[index] = true
 			# **탑을 여기서 지우지 않는다.** 지우면 다 서고 나서 한 번 사라졌다가 다음
 			# 화면에서 일러스트로 다시 나타나는 꼴이라 끊긴다 - 조리개가 닫히는 동안에도
 			# 탑은 서 있어야 그 탑이 그대로 일러스트가 된 것으로 읽힌다.
@@ -95,7 +102,7 @@ func check(hero_at: Vector2, delta: float) -> void:
 		return
 
 	var near := _room.sleeper_at(hero_at)
-	if near < 0 or _beaten.has(near):
+	if near < 0 or beaten.has(near):
 		return
 	_awake = near
 	_rise_time = 0.0
@@ -108,10 +115,19 @@ func _rise_seconds() -> float:
 
 
 ## 잡고 돌아왔을 때. 잡은 것은 다시 안 선다.
+##
+## **깨어나는 순간 이미 `beaten`에 들어간다**(위 `check`). 이 함수는 그 뒤에 화면에서
+## 치우고 싶을 때 쓴다 — 지금은 씬을 갈아타므로 부를 데가 없다.
 func mark_beaten(index: int) -> void:
-	_beaten[index] = true
+	beaten[index] = true
 	if index >= 0 and index < _sprites.size():
 		_sprites[index].visible = false
+
+
+## **새 판을 시작할 때 부른다.** `static`이라 게임을 껐다 켜기 전까지 남으므로,
+## 처음부터 다시 할 때는 여기서 지워야 한다.
+static func forget_all() -> void:
+	beaten.clear()
 
 
 ## **한 번만 재생하고 마지막에 멈춘다.** 되풀이하면 일어섰다 누웠다 하는 꼴이 된다.

@@ -18,6 +18,11 @@ class_name Encounter
 ## 전투는 **씬을 갈아타지 않고** 이 화면 위에 얹는다(`BattleStage`). 복도도 등불도 그것도
 ## 사라지지 않아야 카메라만 돌린 것으로 읽힌다.
 const ENEMY_DEF := "res://resources/watcher.tres"
+
+## 전투가 끝나면 돌아갈 데. **끝나고 아무 데도 안 가면 그 화면에 그대로 서 있게 된다** —
+## `BattleStage.over`를 아무도 안 받고 있어서 실제로 그랬다(회원님, 2026-08-23).
+const BACK_SCENE := "res://scenes/Room.tscn"
+const BACK_FADE := 1.2
 ## 배경째 뽑힌 그림의 테두리를 흩는 셰이더.
 const EDGE_BLEED := "res://shaders/EdgeBleed.gdshader"
 ## 손잡이에서 F5로 남기는 값. 눈으로 맞춘 숫자를 말로 옮기다 틀리지 않으려는 것이다.
@@ -135,6 +140,7 @@ var _shade: ColorRect
 var _flash: ColorRect
 var _burst: _Burst
 var _stage: BattleStage  ## 전투가 시작되면 여기 얹힌다. null이면 아직 걷는 중이다
+var _going_back := false ## 돌아가는 중. 두 번 넘어가지 않게 잠근다
 var _tune_note: Label   ## 값을 눈으로 잡을 때만 뜬다(`-- --tune`)
 var _tune_dragging := false
 
@@ -428,7 +434,21 @@ func _begin_battle() -> void:
 		_target.material = bleed
 	if def.texture != null:
 		_target.texture = def.texture
+	# **끝나면 돌아가야 한다.** 이걸 안 이으면 전투가 끝나도 화면이 그대로 남는다.
+	_stage.over.connect(_on_battle_over)
 	_stage.begin([def], _target, _figure, _lamp, _lines, _shade)
+
+
+## 전투가 끝났다. **어느 쪽으로 끝났든 서고로 돌아간다.**
+##
+## 지는 방법이 아직 없어서(`작업일지.md`) 네 결과가 다 같은 데로 간다 — 결과마다 다르게
+## 할 자리는 여기다.
+func _on_battle_over(_outcome: String) -> void:
+	if _going_back:
+		return
+	_going_back = true
+	await ScreenEffect.fade_out(BACK_FADE)
+	get_tree().change_scene_to_file(BACK_SCENE)
 
 	# **소실점이 그것을 따라간다.** 둘이 걸어서 자리를 옮기는 게 아니라 카메라가 돌아서
 	# 구도가 바뀌는 것이므로, 복도의 원근도 같이 돌아야 한다 - 안 그러면 배경만 아까 그대로
