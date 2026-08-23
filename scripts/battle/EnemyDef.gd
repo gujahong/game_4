@@ -29,6 +29,12 @@ class_name EnemyDef
 @export var heavy_damage: int = 15
 @export var heavy_chance: float = 0.3  ## 웅크릴 때 큰 공격을 준비할 확률
 @export_multiline var telegraph_line: String = ""
+
+## 이 적을 이겼을 때 마지막에 뜨는 줄. **비워 두면 기본값**("정적이 돌아왔다")이 나온다.
+##
+## **적이 곧 관문일 때 쓴다.** 서고의 그것이 그렇다 — 이기고 지고가 아니라
+## **치르고 나면 통과**라서, 대화로 끝내든 전투로 끝내든 길이 열려야 한다(회원님).
+@export_multiline var victory_line: String = ""
 ## **큰 공격이 등불 눈금까지 깎는가**(2026-08-21). 0이면 몸만 다친다.
 ##
 ## 시간이 마르는 것과는 아프기가 다르다 - 시간은 두 턴에 하나씩 예고 없이 주지만, 이것은

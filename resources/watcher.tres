@@ -44,4 +44,5 @@ damage_max = 0
 heavy_damage = 0
 heavy_chance = 0.0
 telegraph_line = ""
+victory_line = "고리가 멎는다. 눈들이 하나씩 감기고, 길이 열린다."
 talk_options = Array[Resource]([SubResource("Talk_look"), SubResource("Talk_ask"), SubResource("Talk_threat")])

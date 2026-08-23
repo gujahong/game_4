@@ -617,8 +617,13 @@ func _on_finished(outcome: String) -> void:
 		"fled": "숨이 가라앉을 때까지 달렸다.",
 	}
 	_outcome = outcome
+	# **적이 곧 관문일 때는 이겨도 "길이 열렸다"여야 한다.** 적이 제 줄을 들고 있으면
+	# 그것을 쓴다 - 서고의 그것처럼 대화로 끝내든 전투로 끝내든 통과인 경우다.
+	var closing: String = CLOSING.get(outcome, "")
+	if outcome == "victory" and not battle.enemies.is_empty() and not battle.enemies[0].victory_line.is_empty():
+		closing = battle.enemies[0].victory_line
 	_beats.append({
-		"text": CLOSING.get(outcome, ""),
+		"text": closing,
 		"bruise": battle.bruised,
 		"enemy": _enemy_total(),
 	})
