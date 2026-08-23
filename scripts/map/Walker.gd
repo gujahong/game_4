@@ -49,6 +49,10 @@ var _sleepers: Sleepers
 var _clutter: Clutter
 var _records: Records
 var _encounter: Vector2
+## 중심의 그것과 이미 마주섰는가. **`static`이라 씬을 갈아타도 남는다** -
+## 전투에서 돌아오면 방이 새로 지어지므로 여기 없으면 잊어버린다.
+## 새 판을 시작할 때는 `forget_all()`로 지운다.
+static var heart_done := false
 var _left := false   ## 이미 넘어갔는가. 한 프레임에 두 번 부르지 않으려는 것
 ## 걸어 다니며 방만 보는 판(`-- --walk`). 적도 조우도 없다.
 var _peaceful := "--walk" in OS.get_cmdline_user_args()
@@ -90,6 +94,11 @@ func _ready() -> void:
 	$World.move_child(_records, _hero_sprite.get_index())
 	_records.setup(_room)
 	_records.all_read.connect(_on_all_read)
+	# **돌아왔으면 길이 열린 채로 시작한다.** 전투에서 돌아오면 방이 새로 지어지는데,
+	# 여기서 도로 안 열면 다 읽어 놓고도 북쪽이 막혀 있다. 글은 안 띄운다 -
+	# 열리는 장면은 처음 한 번이면 된다.
+	if _records.all_done():
+		_room.open_way()
 
 	# 대사창. 서고에는 없었다 - 서가를 읽게 되면서 필요해졌다.
 	add_child(DialogueUI.new())
@@ -135,9 +144,20 @@ func _process(delta: float) -> void:
 	_clutter.poll(_hero.at)
 
 	# 조우 자리에 닿으면 연출로 넘어간다.
-	if not _peaceful and _hero.at.distance_to(_encounter) < ENCOUNTER_RANGE:
+	# **한 번 치른 뒤에는 다시 안 붙는다**(2026-08-23). 전투가 끝나면 이 방으로 돌아오는데,
+	# 기억을 안 해 두면 그 자리에 다시 서는 순간 또 시작된다 - 종이 더미가 그랬던 것과
+	# 같은 일이다(`Sleepers.beaten`).
+	if not _peaceful and not heart_done and _hero.at.distance_to(_encounter) < ENCOUNTER_RANGE:
 		_left = true
+		heart_done = true
 		get_tree().change_scene_to_file(ENCOUNTER_SCENE)
+
+
+## **새 판을 시작할 때 부른다.** 씬을 갈아타도 남는 것들을 한꺼번에 지운다.
+static func forget_all() -> void:
+	heart_done = false
+	Sleepers.forget_all()
+	Records.forget_all()
 
 
 ## 서가 넷을 다 읽었다. **북쪽이 열린다** - 그것에게 가는 길이다.

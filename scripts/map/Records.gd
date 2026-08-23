@@ -60,6 +60,11 @@ var _hints: CanvasLayer
 var _shelves: Array[Shelf] = []
 var _near := -1        ## 지금 앞에 선 서가. 없으면 -1
 var _reading := -1     ## 지금 읽는 중인 서가
+## 이미 읽은 서가. **`static`이라 씬을 갈아타도 남는다**(2026-08-23).
+## 전에는 인스턴스라 전투에서 돌아오면 읽은 것이 다 지워지고 북쪽 길도 다시 닫혔다 -
+## 종이 더미가 되살아나던 것과 같은 일이다(`Sleepers.beaten`).
+## 새 판을 시작할 때는 `Walker.forget_all()`이 지운다.
+static var read_shelves := {}
 ## ### 닫히자마자 다시 열리는 것을 막는다
 ##
 ## 읽기와 대사 넘기기가 **같은 키**(스페이스)다. 그래서 마지막 줄을 넘기려고 누른 것이
@@ -91,14 +96,28 @@ func setup(room: TilesetRoom) -> void:
 			piece.flip_h = k == 2
 			piece.position = shelf.at + Vector2(float(k - 1) * STEP, 0.0)
 			add_child(piece)
+		# **이미 읽은 것은 읽은 채로 시작한다.**
+		shelf.done = read_shelves.has(i)
 		shelf.hint = _make_hint()
 		_hints.add_child(shelf.hint)
 		_shelves.append(shelf)
+
+	_refresh_hints()
 
 	# 대사가 끝나면 읽은 것으로 친다. **끝나는 것을 여기서 듣는다** - 대사 시스템은
 	# 서가가 있는 줄도 모른다.
 	if not Dialogue.scene_finished.is_connected(_on_finished):
 		Dialogue.scene_finished.connect(_on_finished)
+
+
+## 넷을 다 읽었는가. **돌아왔을 때 길을 도로 열어 주려고** `Walker`가 부른다.
+func all_done() -> bool:
+	return not _shelves.is_empty() and done_count() >= _shelves.size()
+
+
+## **새 판을 시작할 때 부른다.**
+static func forget_all() -> void:
+	read_shelves.clear()
 
 
 ## 이 자리가 서가에 막히는가. `Walker`가 걷기 판정에 곱해서 쓴다.
@@ -157,6 +176,7 @@ func _on_finished() -> void:
 	_cool = AFTER_CLOSE
 	if not _shelves[index].done:
 		_shelves[index].done = true
+		read_shelves[index] = true
 		read.emit(index)
 		# **다 읽으면 길이 열린다.** 기록이 장식이 아니라 관문이 되는 자리다.
 		if done_count() >= _shelves.size():
