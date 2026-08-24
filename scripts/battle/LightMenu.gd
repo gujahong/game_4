@@ -36,15 +36,40 @@ const APEX_INSET := 8.0          ## 꼭짓점을 등불 중심에서 살짝 띄�
 ## 안 겹치려면   원뿔의 반각 × 2  ≤  줄기 사이 각도
 ## ```
 ##
-## **이 값은 안 건드린다**(회원님, 2026-08-21: "원뿔을 좁히는 게 아니라 간격들을 늘려야지").
-## 한 번 56으로 줄여 봤는데, 그러면 원뿔이 글자를 못 품어서 글자가 빛 밖으로 삐져나온다 -
-## 이 메뉴의 요점이 **글자가 빛 안에 잠겨 있는 것**이라 그것부터 깨진다.
+## **함부로 줄이지 않는다**(회원님, 2026-08-21: "원뿔을 좁히는 게 아니라 간격들을 늘려야지").
+## 56까지 줄여 봤더니 원뿔이 글자를 못 품어서 글자가 빛 밖으로 삐져나왔다 - 이 메뉴의
+## 요점이 **글자가 빛 안에 잠겨 있는 것**이라 그것부터 깨진다.
 ##
-## 겹치면 **`BattleHud.FAN_REACH`를 늘린다.** 거리가 멀어지면 같은 폭의 원뿔이 각도상으로는
-## 얇아져서, 폭을 안 줄이고도 옆 줄기와 벌어진다.
-const CONE_HALF_WIDTH := 75.0
+## ### 75에서 66으로 (2026-08-21, 재보고 나서)
+##
+## 검은 바탕에 메뉴만 그려 각도별 밝기를 재 봤다(`tools/_menu.gd`). **줄기 폭은 다섯 다
+## 22~23도로 똑같은데 사이가 2~3도밖에 안 남았다** — 거의 붙어 있어서 한 덩어리로 읽힌다.
+##
+## 글자를 품는 한계가 63쯤이라(아래 식) **66이 줄일 수 있는 끝**이다. 사이가 3.6도로 벌어진다.
+## 더 벌리려면 폭이 아니라 **`BattleHud.FAN_REACH`를 늘려야** 한다 - 거리가 멀어지면 같은
+## 폭이라도 각도상으로 얇아진다.
+##
+## ```
+## 글자를 품는가   0.72 × 폭 × 0.837  ≥  글자 폭의 절반(38)   →  폭 ≥ 63
+## 안 겹치는가     2 × atan(폭 / (FAN_REACH × OVERSHOOT))  ≤  줄기 사이 각도
+## ```
+const CONE_HALF_WIDTH := 66.0
 const CONE_OVERSHOOT := 1.65     ## 글자 자리보다 이만큼 더 뻗는다
-const CONE_OVERSHOOT_PICKED := 1.9
+
+## ### ★ 고른 줄기는 통째로 커진다 (회원님, 2026-08-21: "가시성을 위해")
+##
+## **길이만 늘리면 소용이 없다.** 전에 그렇게 해 뒀었는데(`OVERSHOOT_PICKED = 1.9`), 원뿔은
+## 길어질수록 같은 자리에서 오히려 얇아진다 - 재보니 **글자 자리에서의 두께가 39.6 대 39.8로
+## 사실상 같았다.** 길기만 하고 안 굵으니 눈에 안 띄고, 옆 줄기와 붙어 있을 때는 그 미묘한
+## 차이가 오히려 "저것만 두껍다"로 읽혔다.
+##
+## **길이와 너비를 같은 비율로 키운다.** 그러면 원뿔이 **차지하는 각도가 그대로**라서 옆
+## 줄기를 안 건드리고, 그러면서 눈에 띄게 커진다.
+##
+## ```
+## 원뿔의 반각 = atan(너비 / 길이)     ← 둘을 같이 곱하면 안 바뀐다
+## ```
+const CONE_PICKED_GROW := 1.25
 const CONE_FALLOFF_AT := 0.72    ## 이 지점까지는 밝기를 지키고, 그 뒤로 스러진다
 ## 등불이 다 죽어도 글자는 이만큼은 남는다. **0.34로는 뒤 배경이 비쳐서 안 읽혔다** -
 ## 안 보여야 하는 것은 적이지 내 손이 아니다.
@@ -159,11 +184,15 @@ func _draw() -> void:
 func _draw_cone(anchor: Vector2, strength: float, picked: bool) -> void:
 	var direction := (anchor - origin).normalized()
 	var across := Vector2(-direction.y, direction.x)
-	var reach := origin.distance_to(anchor) * (CONE_OVERSHOOT_PICKED if picked else CONE_OVERSHOOT)
+	# **고른 것은 길이와 너비를 같이 키운다**(위 `CONE_PICKED_GROW` 주석). 둘을 같은 비율로
+	# 곱해야 차지하는 각도가 안 바뀌어서 옆 줄기를 안 건드린다.
+	var grow: float = CONE_PICKED_GROW if picked else 1.0
+	var reach := origin.distance_to(anchor) * CONE_OVERSHOOT * grow
+	var wide := CONE_HALF_WIDTH * grow
 	var apex := origin + direction * APEX_INSET
 	var hold := origin + direction * (reach * CONE_FALLOFF_AT)
 	var tip := origin + direction * reach
-	var hold_half := CONE_HALF_WIDTH * CONE_FALLOFF_AT
+	var hold_half := wide * CONE_FALLOFF_AT
 
 	var beam := colour
 	var core := Color(beam.r, beam.g, beam.b, strength)
@@ -177,8 +206,8 @@ func _draw_cone(anchor: Vector2, strength: float, picked: bool) -> void:
 	draw_polygon(
 		PackedVector2Array([
 			hold + across * hold_half,
-			tip + across * CONE_HALF_WIDTH,
-			tip - across * CONE_HALF_WIDTH,
+			tip + across * wide,
+			tip - across * wide,
 			hold - across * hold_half,
 		]),
 		PackedColorArray([held, faded, faded, held])

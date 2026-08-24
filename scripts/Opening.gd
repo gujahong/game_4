@@ -224,6 +224,11 @@ func _enter() -> void:
 	_entering = true
 	Sfx.play(self, Sfx.FLARE, -6.0, 0.7)
 	await ScreenEffect.fade_out(ENTER_FADE)
+	# **새 판이니 지난 판의 진행을 지운다**(2026-08-21). 잡은 종이 더미·읽은 서가·마주선
+	# 그것은 씬을 갈아타도 남으라고 `static`으로 뒀는데(2026-08-23), 그러면 **게임을 껐다
+	# 켜기 전까지** 남는다 - 처음부터 다시 해도 서가가 읽힌 채고 북쪽이 열린 채로 시작한다.
+	# 관문을 넘는 이 자리가 판이 시작되는 유일한 데라 여기서 지운다.
+	Walker.forget_all()
 	get_tree().change_scene_to_file(ARCHIVE_SCENE)
 
 
