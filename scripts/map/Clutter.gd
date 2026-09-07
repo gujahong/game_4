@@ -1,37 +1,19 @@
 extends Node2D
 class_name Clutter
 
-## 서고를 채우는 **벽과 장식과 주울 것**(회원님, 2026-08-18: "필드가 횅하다").
+## 서고를 채우는 **장식과 주울 것**(회원님, 2026-08-18: "필드가 횅하다").
 ##
-## - **벽** — 바닥이 끝나는 자리에 세운다. 코드로 그리고 방 판정을 읽어서 자리를 정한다
+## - **부서진 땅** — 통로 위의 금과 이 빠진 자리. 코드로 그린다
 ## - **가짜 더미** — 안 일어나는 종이 더미. 적(`Sleepers`)과 같은 그림이라 **어느 것이
 ##   살아 있는지 더 모르게 된다.** 이 방의 공포("지나가려던 쓰레기가 일어선다")가
 ##   더미가 넷뿐이면 성립하지 않는다 - 널려 있어야 헷갈린다
 ## - **기름병** — 주우면 전투에서 부을 병이 는다(`Lantern.carried`). 유일하게 규칙에 닿는 것
-## - **책장** — 벽을 따라 선다(뽑은 그림). 심연에 띄웠던 것은 없앴다
 ## - **떠다니는 책** — 심연 가장자리를 느리게 오르내린다
-## - **부서진 땅** — 통로 위의 금과 이 빠진 자리
 ##
-## **이동 판정의 원천은 여전히 `TilesetRoom._walkable()` 하나다.** 더미와 선 책장은 몸을
+## **이동 판정의 원천은 여전히 `TilesetRoom._walkable()` 하나다.** 종이 더미는 몸을
 ## 막지만(`blocks()`), 그 판정을 여기서 직접 하지 않고 `Walker`가 방의 판정에 곱해서 쓴다.
 
 const PILE := "res://assets/enemies/paper_pile.png"
-
-## ### 책장 뽑기에서 알아낸 것 (2026-08-18)
-##
-## PixelLab로 여러 번 뽑으며 투시가 계속 어긋났다. 주인공(`pilgrim/south.png`)을 옆에
-## 놓고 재보면 이유가 분명하다.
-##
-## ```
-## 주인공     정면만 보인다.  모서리 평행
-## 종이 더미  납작해서 윗면.  모서리 평행
-## 어긋난 것  정면 + 옆면.    모서리가 수렴  ← 혼자 3점투시
-## ```
-##
-## **높은 물건이 문제다.** 납작한 것(종이 더미)은 어느 각도로 뽑아도 바닥에 눕지만, 높은
-## 것은 `view`를 조금만 틀어도 옆면과 소실점이 생긴다. `side`는 윗면이 아예 없고
-## `high top-down`은 옆면까지 다 보인다 - **그 사이가 `low top-down`이다.**
-const SHELF_ART := "res://assets/tilesets/bookshelf.png"
 
 ## 자리는 전부 **한가운데에서 몇 칸 떨어졌는가**(칸 좌표)다. 화면 좌표라 아래가 +y다.
 ## 홀은 반너비 4.5칸, 날개 복도는 반너비 1.6칸으로 8칸까지, 끝방은 8~14칸에 반너비 3칸이다
@@ -39,77 +21,62 @@ const SHELF_ART := "res://assets/tilesets/bookshelf.png"
 ## **일곱에서 넷으로 줄였다**(회원님, 2026-08-18: "바닥에 있는 책들 너무 많아").
 ## 진짜 적(`Sleepers`)이 넷이라 가짜도 넷이면 반반이고, 그 정도면 헷갈린다.
 const PILES := [
-	Vector2(-1.0, 7.4),                        # 남쪽 복도
-	Vector2(-3.2, 2.0),                        # 홀
-	Vector2(7.4, -1.0),                        # 동쪽 복도
-	Vector2(-9.2, 2.2),                        # 서쪽 열람실
+	Vector2(-1.2, 9.2),                        # 남쪽 복도
+	Vector2(-4.0, 2.5),                        # 홀
+	Vector2(9.2, -1.2),                        # 동쪽 복도
+	Vector2(-11.5, 2.8),                       # 서쪽 열람실
 ]
-const BOTTLES := [Vector2(-12.6, 1.6), Vector2(12.6, 1.6), Vector2(0.0, -3.4)]
+const BOTTLES := [Vector2(-15.7, 2.0), Vector2(15.7, 2.0), Vector2(0.0, -4.2)]
 
-## 뽑은 책장(정면 그림)을 **벽을 따라 세운다.** 이 게임은 3/4 시점이라 가구가 전부 같은
-## 방향을 봐야 하는데, 축이 직각인 구조라 벽에 붙이면 그대로 맞는다.
-## **북쪽 문(±1.6칸) 앞은 비운다** - 막으면 그것에게 못 간다.
-const FLOOR_SHELVES := [
-	Vector2(-3.9, -4.0), Vector2(-2.7, -4.0),   # 홀 북벽 - 문 왼쪽
-	Vector2(2.7, -4.0), Vector2(3.9, -4.0),     # 홀 북벽 - 문 오른쪽
-	Vector2(-3.9, 4.0), Vector2(3.9, 4.0),      # 홀 남벽 구석
-]
-## **열람실 안에는 장식 책장을 안 둔다**(2026-08-19). 거기는 **읽을 수 있는 서가**(`Records`)의
-## 자리다 - 같은 그림이 옆에 서 있으면 어느 것이 읽히는 것인지 구별이 안 된다.
-## 열람실은 서가만 있고 나머지는 비워 둔다.
+## **장식 책장은 없앴다**(회원님, 2026-08-24).
+##
+## 벽을 따라 여섯 개를 세워 뒀었는데, **읽는 서가와 같은 그림**이라 어느 것이 읽히는
+## 것인지 흐렸다. 전에는 읽는 쪽을 셋씩 붙여 크기로 갈랐는데, 그것도 벽지처럼 보여서
+## 하나로 줄였다(`Records`) - 그러면 크기로도 못 가른다.
+##
+## **그래서 장식 쪽을 없앤다.** 책장이 서 있으면 전부 읽는 것이다. 규칙이 하나가 된다.
 
-## **떠 있던 책장은 없앴다**(회원님: "책장이 대각선으로 있잖아"). 심연 위 대각선에 띄워
-## 놨더니 벽도 아니고 가구도 아닌 것이 비스듬히 걸려 있었다 - 책장은 벽을 따라 선다.
-## 떠다니는 책만 몇 권 남긴다. 이 세계의 기록은 원래 떠다니기도 한다.
+## 떠다니는 책 몇 권. **이 세계의 기록은 원래 떠다니기도 한다.**
+## 전에 심연 위에 띄워 뒀던 책장은 없앴다(회원님: "책장이 대각선으로 있잖아") -
+## 벽도 아니고 가구도 아닌 것이 비스듬히 걸려 있었다.
 const BOOKS := [
-	Vector2(-6.2, -6.6), Vector2(6.6, 6.2), Vector2(-12.6, 6.6),
+	Vector2(-7.8, -8.2), Vector2(8.2, 7.8), Vector2(-15.7, 8.2),
 ]
 ## 통로 위. 길 한가운데를 조금씩 비켜 둔다.
 const CRACKS := [
-	Vector2(-0.9, 5.6), Vector2(-2.5, -2.0), Vector2(2.2, 2.6),
-	Vector2(-8.6, -1.0), Vector2(8.6, 1.2), Vector2(-11.2, 0.6),
+	Vector2(-1.1, 7.0), Vector2(-3.1, -2.5), Vector2(2.8, 3.2),
+	Vector2(-10.8, -1.2), Vector2(10.8, 1.5), Vector2(-14.0, 0.8),
 ]
 
 ## 기름병을 줍는 거리(픽셀). 등불 반경 안에서 보고 다가가면 닿는 크기다.
 const PICK_REACH := 26.0
 
-## 몸이 막히는 반지름(픽셀). **밟고 지나가지 못한다**(회원님) - 종이라도 무릎까지
+## 더미가 몸을 막는 반지름(픽셀). **밟고 지나가지 못한다**(회원님) - 종이라도 무릎까지
 ## 쌓인 무더기다. 이동 판정 자체는 여전히 방이 정하고, Walker가 그 판정에 이것을 곱한다.
 const PILE_BLOCK := 14.0
-const SHELF_BLOCK := 17.0
 
 ## 떠다니는 책의 숨. 느려야 떠 있는 것이지, 빠르면 튀는 것이다.
 const BOB_PIXELS := 3.0
 const BOB_SPEED := 0.8
 
-## ### 벽 (회원님, 2026-08-18: "벽이 있어야 할 것 같은데")
+## **벽은 없앴다**(회원님, 2026-08-24: "그냥 벽 아예 없애자").
 ##
-## **바닥이 끝나고 심연이 시작되는 자리에 세운다.** 이 게임은 3/4 시점이라 북쪽으로 난
-## 모서리에서만 벽의 **얼굴**이 보인다 - 거기에 벽면을 그리면 심연 위에 뜬 판이 아니라
-## 방 안이 된다.
+## 사면에 세워도 봤는데, 바깥이 심연이라 배경이 거의 검정이라서 **벽면이 배경에 녹아**
+## 밝은 꼭대기 줄만 남았다 - 벽이 아니라 테두리 선으로 보였다. 밝기를 올리면 이번에는
+## 심연 위에 떠 있다는 그림이 죽는다.
 ##
-## **벽의 모양을 따로 적지 않는다.** 어느 칸이 바닥인지는 `TilesetRoom._walkable()` 하나가
-## 정하고, 여기서는 그 판정을 읽어서 "바닥인데 북쪽이 심연인 칸"만 골라 세운다 -
-## 방 구조를 고치면 벽이 저절로 따라온다.
-const WALL_HIGH := 20.0
-const WALL_CAP := 5.0                       ## 벽 꼭대기의 밝은 띠(윗면)
-const WALL_TOP := Color(0.26, 0.20, 0.13)   ## 빛을 받는 윗면
-const WALL_FACE := Color(0.15, 0.11, 0.07)  ## 그늘진 벽면
-const WALL_FOOT := Color(0.07, 0.05, 0.03)  ## 바닥과 만나는 자리의 그림자
+## **그래서 안 그린다.** 바닥이 끝나면 그냥 끝난다 - 심연 위에 놓인 판이다.
+## 되살릴 일이 생기면 git에서 꺼내면 된다(2026-08-24 커밋).
 
-var _blocks: Array = []   ## [자리, 막는 반지름] 짝. 더미와 통로 책장이 쌓는다
+var _blocks: Array = []   ## [자리, 막는 반지름] 짝. 종이 더미가 쌓는다
 var _bottle_spots: Array[Vector2] = []
 var _bottles: Array[Sprite2D] = []
 var _book_spots: Array[Vector2] = []
 var _crack_spots: Array[Vector2] = []
-var _wall_cells: Array[Vector2] = []   ## 벽을 세울 칸의 왼쪽 위 모서리(세상 좌표)
-var _tile := 32.0
 var _time := 0.0
 
 
 func setup(room: TilesetRoom) -> void:
-	_gather_walls(room)
-
 	# 가짜 더미. 반씩 뒤집고 조금씩 어둡혀서 **같은 그림이 같은 물건으로 안 보이게** 한다.
 	var pile: Texture2D = load(PILE)
 	for i in PILES.size():
@@ -121,16 +88,6 @@ func setup(room: TilesetRoom) -> void:
 		lying.modulate = Color(shade, shade, shade)
 		add_child(lying)
 		_blocks.append([lying.position, PILE_BLOCK])
-
-	# 벽을 따라 선 책장. 반씩 뒤집어서 같은 그림이 늘어서 벽지가 되는 것을 피한다.
-	var shelf_art: Texture2D = load(SHELF_ART)
-	for i in FLOOR_SHELVES.size():
-		var standing := Sprite2D.new()
-		standing.texture = shelf_art
-		standing.flip_h = i % 2 == 1
-		standing.position = room.spot_px(FLOOR_SHELVES[i]).round()
-		add_child(standing)
-		_blocks.append([standing.position, SHELF_BLOCK])
 
 	for spot in BOTTLES:
 		var bottle := Sprite2D.new()
@@ -154,7 +111,7 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
-## 이 자리가 더미나 책장에 막히는가. Walker가 걷기 판정에 곱해서 쓴다.
+## 이 자리가 종이 더미에 막히는가. Walker가 걷기 판정에 곱해서 쓴다.
 func blocks(at: Vector2) -> bool:
 	for pair in _blocks:
 		if at.distance_to(pair[0]) < pair[1]:
@@ -173,37 +130,11 @@ func poll(at: Vector2) -> void:
 			Sfx.play(self, Sfx.PICK, -10.0)
 
 
-## 바닥인데 **북쪽이 심연인** 칸을 모은다. 거기가 벽의 얼굴이 보이는 자리다.
-func _gather_walls(room: TilesetRoom) -> void:
-	_tile = float(room.tile_px())
-	for r in TilesetRoom.ROWS:
-		for c in TilesetRoom.COLS:
-			if not room.is_floor(Vector2i(c, r)):
-				continue
-			if room.is_floor(Vector2i(c, r - 1)):
-				continue
-			_wall_cells.append(Vector2(float(c), float(r)) * _tile)
-
-
 func _draw() -> void:
-	# 벽이 제일 먼저다 - 바닥 위의 것들이 벽 앞에 와야 방 안에 선 것으로 보인다.
-	for at in _wall_cells:
-		_wall(at)
 	for i in _crack_spots.size():
 		_crack(_crack_spots[i], i)
 	for i in _book_spots.size():
 		_book(_book_spots[i], i)
-
-
-## 벽 한 칸. 바닥 칸의 **위쪽으로** 솟는다 - 윗면·얼굴·발치 그림자 세 띠다.
-## 세 띠라야 판때기가 아니라 두께가 있는 벽으로 읽힌다.
-func _wall(at: Vector2) -> void:
-	var top: float = at.y - WALL_HIGH
-	draw_rect(Rect2(Vector2(at.x, top), Vector2(_tile, WALL_CAP)), WALL_TOP)
-	draw_rect(Rect2(Vector2(at.x, top + WALL_CAP),
-		Vector2(_tile, WALL_HIGH - WALL_CAP)), WALL_FACE)
-	# 벽과 바닥이 만나는 한 줄. 이게 있어야 벽이 바닥에 서 있는 것이 된다.
-	draw_rect(Rect2(Vector2(at.x, at.y - 2.0), Vector2(_tile, 2.0)), WALL_FOOT)
 
 
 ## 통로 위의 금. 어두운 점 몇 개가 지그재그로 이어진 것 - 가까이서만 보이면 된다.
@@ -217,8 +148,6 @@ func _crack(at: Vector2, seed_i: int) -> void:
 		spot += step + Vector2(wobble * float(k % 2), -wobble * float((k + 1) % 2)) * 2.0
 	# 이 빠진 자리 하나. 금 끝에 뚫린 구멍이라야 부서진 땅이 된다.
 	draw_rect(Rect2((at + step * 2.0).round(), Vector2(4.0, 3.0)), Color(0.02, 0.02, 0.02))
-
-
 
 
 ## 심연 가장자리를 떠도는 책 한 권. 위아래로 느리게 숨 쉰다.

@@ -11,8 +11,8 @@
 
 [sub_resource type="ShaderMaterial" id="ScreenFilter"]
 shader = ExtResource("4")
-shader_parameter/light_radius = 0.1
-shader_parameter/light_softness = 0.14
+shader_parameter/light_radius = 0.18
+shader_parameter/light_softness = 0.30
 shader_parameter/ambient = 0.08
 shader_parameter/tint = Color(1, 0.87, 0.7, 1)
 

@@ -7,11 +7,17 @@ class_name Records
 ## 있었는데 **아무도 안 불렀다.** 서가가 그려지지도 않았고 읽을 수도 없어서, 북쪽 길이 영영
 ## 안 열렸다 - 그것에게 갈 방법이 없었다. 그 구멍을 메운다.
 ##
-## ### 서가는 장식 책장보다 크다 (회원님, 2026-08-19)
+## ### ~~서가는 장식 책장보다 크다~~ → **하나씩만 세운다** (회원님, 2026-08-24)
 ##
-## `Clutter`의 책장은 벽을 채우는 가구고, 이것은 **읽어야 하는 물건**이다. 크기가 같으면
-## 어느 것이 중요한지 구별이 안 된다. 그래서 **책장 그림 셋을 나란히 붙여 한 덩어리**로
-## 세운다 - 그림을 늘리지 않으므로 도트가 안 깨진다(그림 규칙).
+## 전에는 **책장 그림 셋을 나란히 붙여 한 덩어리**로 세웠다(2026-08-19). 장식 책장과 크기가
+## 같으면 어느 것이 읽는 것인지 구별이 안 된다는 이유였다.
+##
+## **그런데 셋이 붙어 있으니 벽지처럼 보였다**(회원님: "너무 3개, 이렇게 있으니까").
+## 같은 그림을 이어 붙이면 가구 하나가 아니라 **무늬**가 된다.
+##
+## **구별은 크기가 아니라 자리가 한다.** 장식 책장은 홀에만 있고 열람실에는 안 둔다
+## (`Clutter.FLOOR_SHELVES` 주석) - 열람실에 서 있는 책장은 전부 읽는 것이라 헷갈릴 일이 없다.
+## 게다가 다가가면 "읽는다"가 뜬다.
 ##
 ## ### 읽으면 대사창이 뜬다
 ##
@@ -22,8 +28,8 @@ signal read(index: int)      ## 서가 하나를 다 읽었다
 signal all_read()            ## 넷을 다 읽었다 - 북쪽 길이 열린다
 
 const SHELF_ART := "res://assets/tilesets/bookshelf.png"
-## 한 서가를 이룰 책장 수와 간격(픽셀). 그림이 38px 폭이라 38이면 딱 붙는다.
-const WIDE := 3
+## 한 서가를 이룰 책장 수와 간격(픽셀). **하나면 간격은 안 쓰인다**(위 주석).
+const WIDE := 1
 const STEP := 37
 
 ## ### 알림은 필터 위에 띄운다 (회원님, 2026-08-19: "읽는다 이것도 잘 안 보여")
@@ -46,8 +52,9 @@ const HINT_FADE := 0.18
 ## 다 읽은 서가에 남는 표시. **다시 읽을 수 있다는 것을 알린다.**
 const DONE_TEXT := "다시 읽는다"
 
-## 몸이 막히는 반지름(픽셀). 서가는 벽에 붙은 큰 가구라 넓게 막는다.
-const BLOCK := 52.0
+## 몸이 막히는 반지름(픽셀). **책장 하나 폭**(38px)의 절반쯤이면 된다 - 52는 셋을
+## 붙였을 때의 값이라, 하나로 줄이고도 그대로 두면 허공이 막힌다.
+const BLOCK := 26.0
 
 
 class Shelf:
@@ -89,12 +96,14 @@ func setup(room: TilesetRoom) -> void:
 	for i in spots.size():
 		var shelf := Shelf.new()
 		shelf.at = spots[i].round()
-		# 책장 셋을 나란히. 가운데가 spot에 오게 왼쪽부터 편다.
+		# **개수와 무관하게 가운데가 spot에 온다.** 전에는 `(k - 1) * STEP`이라 셋일 때만
+		# 맞았고, 하나로 줄이니 37px 왼쪽으로 밀렸다.
 		for k in WIDE:
 			var piece := Sprite2D.new()
 			piece.texture = art
-			piece.flip_h = k == 2
-			piece.position = shelf.at + Vector2(float(k - 1) * STEP, 0.0)
+			piece.flip_h = k % 2 == 1
+			var aside: float = (float(k) - float(WIDE - 1) * 0.5) * STEP
+			piece.position = shelf.at + Vector2(roundf(aside), 0.0)
 			add_child(piece)
 		# **이미 읽은 것은 읽은 채로 시작한다.**
 		shelf.done = read_shelves.has(i)
