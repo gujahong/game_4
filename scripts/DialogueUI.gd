@@ -89,6 +89,46 @@ const GLYPH_H := 32
 ## 아직 안 읽힌 문자의 색. 흐려야 "안 읽히는 것"으로 보인다.
 const UNREAD := Color("6b625a")
 
+## ### 해독은 두 단계다 (회원님, 2026-08-24)
+##
+## 전에는 **한 단계**였다 — 줄 전체가 못 읽는 문자로 처음부터 깔려 있고, 우리 글이 앞에서부터
+## 그것을 먹어 들어갔다. 그래서 *옛 글씨가 적히는 장면 자체가 없었다.* 뭔가 이미 적혀 있는
+## 종이를 읽는 것이었지, 받아 적히는 것이 아니었다.
+##
+## ```
+## 1단계   못 읽는 문자가 한 자씩 써진다.        아직 아무것도 안 읽힌다
+## 2단계   다 써진 뒤, 앞에서부터 우리 글로 바뀐다
+## ```
+##
+## **1단계의 시계는 대사 시스템 것을 그대로 쓴다**(`chars_per_second`). 그래야 즉시완성도
+## 글자별 실측 타이밍도 규칙을 안 건드리고 따라온다. **2단계만 여기서 잰다** — 대사 시스템은
+## 1단계가 끝나면 이 줄을 "다 드러났다"로 치므로, 그 뒤는 화면이 알아서 붙잡고 있어야 한다.
+const DECODE_CPS := 18.0
+## 풀리는 자리 **앞의 몇 글자는 매번 다른 문자로 떨린다.** 이게 "스르륵"이다 —
+## 딱 잘라 바뀌면 커서가 지나가는 것으로 보이지, 풀리는 것으로 안 보인다.
+const DECODE_EDGE := 4
+## 떨리는 주기(초). 매 프레임 새로 뽑으면 지지직거려서 눈이 아프다.
+const DECODE_FLICKER := 0.055
+
+## ### 등불빛이 글줄을 훑고 지나간다 (회원님, 2026-08-24: "꽤 멋있는 간단한 연출")
+##
+## 그냥 바뀌기만 하면 글자가 교체되는 것이지 *해독되는* 것이 아니다. 그래서 **푸는 자리에
+## 빛을 하나 붙여 왼쪽에서 오른쪽으로 흘려보낸다.** 세 조각이 한 덩어리로 움직인다.
+##
+## ```
+## …식은 우리 글  │  방금 풀려 아직 뜨거운 꼬리  │  빛이 닿아 떨리는 옛 문자  │  아직 어두운 옛 문자…
+##                        등불색 → 제 색으로 식음          어둠 → 등불색으로 달아오름
+## ```
+##
+## **빛이 지나간 자리가 읽힌다** — 이 게임의 전제("등불이 비추는 것만 실재한다")가 그대로
+## 연출이 된다. 셰이더도 노드도 파티클도 안 쓴다. **글자마다 `[color]` 한 겹**이 전부다.
+const SOLVED_GLOW := Color("ffb454")   ## 등불색
+## 방금 풀린 글자가 제 색으로 식는 데 걸리는 글자 수. 꼬리 길이다.
+const GLOW_TAIL := 7
+## 아직 안 풀린 옛 문자가 빛을 얼마나 받는가(0~1). 1이면 앞이 너무 환해서 어디가 풀린
+## 자리인지 안 보인다 — 빛은 **닿기만** 하고 넘어가야 한다.
+const EDGE_LIT := 0.7
+
 var _full_line := ""
 ## 못 읽는 줄. **글자 하나가 배열 한 칸**이다 - `[img]` 태그가 여러 글자라서 문자열로 두면
 ## "몇 자까지 풀렸는가"를 셀 수 없다.
@@ -103,6 +143,12 @@ var _choice_box: VBoxContainer
 var _current_style := "normal"
 var _arrow_blink_t := 0.0
 var _panel_home := Vector2.ZERO
+
+## 2단계가 도는 중인가. **도는 동안은 스페이스가 "넘기기"가 아니라 "마저 풀기"다.**
+var _solving := false
+var _solved := 0.0     ## 여기까지 우리 글로 풀렸다(소수점은 속도 계산용)
+var _drawn := -1       ## 마지막으로 화면에 그린 `_solved`. 같으면 글자를 다시 안 짠다
+var _flicker_t := 0.0
 
 
 func _ready() -> void:
@@ -122,6 +168,9 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if _solving:
+		_step_solving(delta)
+		return
 	if not _arrow.visible:
 		return
 	_arrow_blink_t += delta
@@ -136,7 +185,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not Dialogue.pending_choices.is_empty():
 		return  # 선택지가 떠 있으면 버튼으로만 진행한다
 	if _is_advance_input(event):
-		Dialogue.advance()
+		# **풀리는 중이면 먼저 마저 푼다.** 대사 시스템은 옛 문자가 다 써진 순간 이 줄을
+		# "다 드러났다"로 쳐서, 여기서 안 가로채면 스르륵 풀리는 것을 못 보고 다음 줄로 넘어간다.
+		if _solving:
+			_finish_solving()
+		else:
+			Dialogue.advance()
 		get_viewport().set_input_as_handled()
 
 
@@ -213,20 +267,61 @@ func _on_line_started(line: DialogueLine) -> void:
 	_name_label.visible = not line.speaker.is_empty()
 	_text_label.text = ""
 	_arrow.visible = false
-	# **해독 연출**(회원님, 2026-08-19). 못 읽는 글자가 먼저 깔리고 스르르 풀린다 -
+	# **해독 연출**(회원님, 2026-08-19). 옛 문자로 먼저 써지고 스르르 풀린다 -
 	# 잊힌 것을 받아 적은 기록이라는 설정과 맞는다. 스타일로 켜므로 다른 화면은 그대로다.
 	_full_line = line.text
 	_scrambled = _garble(line.text)
+	_solving = false
+	_solved = 0.0
+	_drawn = -1
+	_flicker_t = 0.0
 
 
 func _on_typing_progress(revealed_text: String) -> void:
+	# **1단계.** 우리 글이 아니라 옛 문자가 써진다 - 드러난 길이만 받아 쓴다.
 	if _current_style in DECODING:
-		_text_label.text = _decorate(_decoding(revealed_text.length()))
+		_text_label.text = _decorate(_written(revealed_text.length()))
 		return
 	_text_label.text = _decorate(revealed_text)
 
 
 func _on_line_finished_typing() -> void:
+	# **다 써졌으면 이제 푼다.** 화살표는 아직 안 띄운다 - 읽을 것이 아직 없다.
+	if _current_style in DECODING and _full_line.length() > 0:
+		_solving = true
+		_solved = 0.0
+		_drawn = -1
+		_flicker_t = 0.0
+		_arrow.visible = false
+		return
+	_show_arrow()
+
+
+## **2단계.** 앞에서부터 우리 글로 바뀐다. 대사 시스템이 아니라 여기가 잰다.
+func _step_solving(delta: float) -> void:
+	var whole: float = float(_full_line.length())
+	_solved = minf(_solved + DECODE_CPS * delta, whole)
+	_flicker_t += delta
+	var shake: bool = _flicker_t >= DECODE_FLICKER
+	if shake:
+		_flicker_t = 0.0
+	# 푼 자리가 늘었거나 떨 차례일 때만 글자를 다시 짠다. BBCode를 매 프레임 다시 파싱하면
+	# 줄이 길 때 눈에 띄게 무겁다.
+	if shake or int(_solved) != _drawn:
+		_drawn = int(_solved)
+		_text_label.text = _decorate(_solving_text(_drawn))
+	if _solved >= whole:
+		_finish_solving()
+
+
+func _finish_solving() -> void:
+	_solving = false
+	_solved = float(_full_line.length())
+	_text_label.text = _decorate(_full_line)
+	_show_arrow()
+
+
+func _show_arrow() -> void:
 	# 이 시점엔 아직 pending_choices가 안 채워져 있다(Controller가 이 시그널을 먼저 쏘고 나서
 	# 선택지를 세팅한다) - 선택지가 있는 줄이면 곧 _on_choices_presented가 화살표를 다시 끈다.
 	_arrow.visible = true
@@ -261,6 +356,7 @@ func _on_scene_finished() -> void:
 	_panel.visible = false
 	_arrow.visible = false
 	_choice_box.visible = false
+	_solving = false      # 창이 닫혔는데 안 보이는 글자를 계속 풀고 있으면 안 된다
 	_clear_choices()
 
 
@@ -300,19 +396,54 @@ func _garble(text: String) -> Array[String]:
 ##
 ## `valign=center`라야 글줄에 앉는다. **색은 `[img]` 안에 넣어야 한다** - 바깥의
 ## `[color]`는 글자만 물들이고 그림은 안 물들인다.
-func _glyph() -> String:
+## 빛이 닿는 자리는 밝게 뽑으려고 색을 받는다 - 안 주면 여느 때처럼 어둡다.
+func _glyph(tint: Color = UNREAD) -> String:
 	return "[img=%dx%d valign=center color=#%s]%s/%02d.png[/img]" % [
-		GLYPH_W, GLYPH_H, UNREAD.to_html(false), GLYPH_DIR, randi() % GLYPHS]
+		GLYPH_W, GLYPH_H, tint.to_html(false), GLYPH_DIR, randi() % GLYPHS]
 
 
-## 앞에서 `revealed`자까지는 우리 글, 나머지는 못 읽는 문자.
-## **줄의 길이가 처음부터 다 보인다** - 뭔가 적혀 있는데 안 읽히는 상태에서 시작한다.
-func _decoding(revealed: int) -> String:
-	var solved: int = clampi(revealed, 0, _full_line.length())
-	var out: String = _full_line.substr(0, solved)
-	for i in range(solved, _scrambled.size()):
+## **1단계의 한 컷.** 앞에서 `count`자까지 옛 문자가 써졌다. 뒤는 아직 빈자리다 —
+## **줄이 자라는 것이 보여야** 적히는 중으로 읽힌다.
+func _written(count: int) -> String:
+	var upto: int = clampi(count, 0, _scrambled.size())
+	var out := ""
+	for i in upto:
 		out += _scrambled[i]
 	return out
+
+
+## **2단계의 한 컷.** 빛이 `solved`자리에 와 있다. 위 그림의 네 조각을 순서대로 잇는다.
+func _solving_text(solved: int) -> String:
+	var upto: int = clampi(solved, 0, _full_line.length())
+	var rest: Color = _rest_color()
+	var out := ""
+
+	# ① 다 식은 우리 글. 색을 안 입힌다 - 바깥의 스타일 색이 그대로 먹는다.
+	var cooled: int = maxi(upto - GLOW_TAIL, 0)
+	if cooled > 0:
+		out += _full_line.substr(0, cooled)
+
+	# ② 아직 뜨거운 꼬리. 빛에 가까울수록 등불색이다.
+	for i in range(cooled, upto):
+		var heat: float = 1.0 - float(upto - 1 - i) / float(GLOW_TAIL)
+		out += "[color=#%s]%s[/color]" % [
+			rest.lerp(SOLVED_GLOW, clampf(heat, 0.0, 1.0)).to_html(false), _full_line[i]]
+
+	# ③④ 아직 안 풀린 옛 문자. 빛이 닿는 데까지만 떨면서 달아오른다.
+	# 띄어쓰기와 문장부호는 애초에 안 뭉갠 것이라 떨 것도 없다(`_garble`).
+	for i in range(upto, _scrambled.size()):
+		if i < upto + DECODE_EDGE and _scrambled[i].begins_with("[img"):
+			var near: float = 1.0 - float(i - upto) / float(DECODE_EDGE)
+			out += _glyph(UNREAD.lerp(SOLVED_GLOW, near * EDGE_LIT))
+		else:
+			out += _scrambled[i]
+	return out
+
+
+## 다 풀리고 나면 이 색으로 남는다. 스타일이 색을 정했으면 그것, 아니면 보통 글자색이다.
+func _rest_color() -> Color:
+	var preset: Dictionary = STYLE_PRESETS.get(_current_style, {})
+	return Color(preset["color"]) if preset.has("color") else TEXT_COLOR
 
 
 func _decorate(text: String) -> String:

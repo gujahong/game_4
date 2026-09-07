@@ -37,7 +37,12 @@ signal auto_advance_changed(enabled: bool)
 signal skip_mode_changed(enabled: bool)
 signal chapter_finished()  # play_chapter()로 재생한 마지막 씬까지 다 끝남
 
-@export var chars_per_second: float = 35.0  # 타이핑 속도(초당 글자 수)
+## 타이핑 속도(초당 글자 수). **35에서 내렸다**(회원님, 2026-08-24: "글자 너무 빠르게 나와").
+##
+## 한글은 한 글자가 한 음절이라 로마자보다 훨씬 빨리 읽힌다 - 초당 35자면 눈이 못 따라간다.
+## 그리고 서가 글은 **못 읽는 문자가 스르르 풀리는 연출**이 붙어 있어서(`DialogueUI`),
+## 느려야 그 풀리는 것이 보인다.
+@export var chars_per_second: float = 15.0
 @export var auto_advance_delay: float = 1.2  # 자동 진행 시, 타이핑 끝난 뒤 다음 줄까지 대기 시간(초)
 ## 한 글자, "..." 처럼 아주 짧은 줄은 뜨자마자 이미 다 타이핑돼있어서, 빠르게 연달아 두 번 클릭하면
 ## (첫 클릭=이전 줄 reveal, 둘째 클릭=advance) 그 사이에 이 줄도 이미 다 드러난 상태라 읽을 새도 없이
